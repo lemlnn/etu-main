@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "etu"
+version = "0.0.1"
+description = "EVE Tracking Utility"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32"
+]
+
+[project.scripts]
+etu = "etu.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
