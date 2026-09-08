@@ -1,7 +1,11 @@
 import requests
 
-from etu.inventory import find_type, get_type
-
+from etu.inventory import (
+    find_type,
+    get_type,
+    get_group,
+    get_category,
+)
 
 def search_by_id():
     raw_id = input("Type ID: ").strip()
@@ -12,20 +16,22 @@ def search_by_id():
         print("Type ID must be a number.")
         return
 
-    data = get_type(type_id)
+    item = get_type(type_id)
+    group = get_group(item["group_id"])
+    category = get_category(group["category_id"])
 
     print()
-    print(f"Name: {data.get('name')}")
+    print(f"Name: {item.get('name')}")
     print(f"Type ID: {type_id}")
-    print(f"Group ID: {data.get('group_id')}")
-    print(f"Volume: {data.get('volume')}")
-    print(f"Published: {data.get('published')}")
+    print(f"Group: {group.get('name')} - ID: {item.get('group_id')}")
+    print(f"Category: {category.get('name')} - " f"ID: {group.get('category_id')}")
+    print(f"Volume: {item.get('volume')}")
+    print(f"Published: {item.get('published')}")
 
-    if description := data.get("description"):
+    if description := item.get("description"):
         print()
         print("Description:")
         print(description)
-
 
 def search_by_name():
     name = input("Item name: ").strip()
@@ -38,7 +44,6 @@ def search_by_name():
 
     for match in matches:
         print(f"{match['name']} - ID: {match['id']}")
-
 
 def main():
     print("ETU dev-0.0.1")
@@ -66,7 +71,6 @@ def main():
 
     except requests.RequestException as error:
         print(f"Network request failed: {error}")
-
 
 if __name__ == "__main__":
     main()
