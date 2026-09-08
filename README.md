@@ -1,17 +1,18 @@
 # etu-main
-A helper utility for EVE Online
 
+A helper utility for EVE Online.
 
-Internal note -
+## Internal project layout
 
+```text
 etu/
 ├── README.md
 ├── LICENSE
 ├── pyproject.toml
 ├── src/
 │   └── etu/
-│       ├── __init__.py - should be blank for now
-│       ├── __main__.py - temporary frontend for testing before a UI
-│       ├── esi.py - should handle requests from the esi
-│       └── types.py - logic library for converting stuff from esi to etu code
-└── tests/ - testing site for the components
+│       ├── __init__.py   # Blank for now
+│       ├── __main__.py   # Temporary frontend for testing before the TUI
+│       ├── esi.py        # Handles requests to EVE ESI
+│       └── inventory.py  # Converts/raw ESI inventory data into ETU objects
+└── tests/                # Component and integration tests
