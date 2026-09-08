@@ -17,3 +17,7 @@ venv/
 # Editors
 .vscode/
 .idea/
+
+# Generated data
+data/sde/
+*.db

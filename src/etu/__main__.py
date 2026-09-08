@@ -1,5 +1,6 @@
-import requests
+import sqlite3
 
+from etu import sde
 from etu.inventory import (
     find_type,
     get_type,
@@ -8,6 +9,9 @@ from etu.inventory import (
 )
 
 def search_by_id():
+    if not require_sde():
+        return
+    
     raw_id = input("Type ID: ").strip()
 
     try:
@@ -17,14 +21,16 @@ def search_by_id():
         return
 
     item = get_type(type_id)
-    group = get_group(item["group_id"])
-    category = get_category(group["category_id"])
+
+    if item is None:
+        print(f'No inventory type found with ID "{type_id}".')
+        return
 
     print()
     print(f"Name: {item.get('name')}")
     print(f"Type ID: {type_id}")
-    print(f"Group: {group.get('name')} - ID: {item.get('group_id')}")
-    print(f"Category: {category.get('name')} - " f"ID: {group.get('category_id')}")
+    print(f"Group: {item.get('group_name')} - ID: {item.get('group_id')}")
+    print(f"Category: {item.get('category_name')} - ID: {item.get('category_id')}")
     print(f"Volume: {item.get('volume')}")
     print(f"Published: {item.get('published')}")
 
@@ -34,6 +40,9 @@ def search_by_id():
         print(description)
 
 def search_by_name():
+    if not require_sde():
+        return
+    
     name = input("Item name: ").strip()
 
     matches = find_type(name)
@@ -43,34 +52,49 @@ def search_by_name():
         return
 
     for match in matches:
-        print(f"{match['name']} - ID: {match['id']}")
+        print(
+            f"{match['name']} - ID: {match['type_id']} - "
+            f"{match['group_name']} - {match['category_name']}"
+        )
+
+def import_static_data():
+    try:
+        sde.import_sde()
+
+    except FileNotFoundError as error:
+        print(error)
+
+    except sqlite3.Error as error:
+        print(f"Database error: {error}")
+
+def require_sde():
+    if sde.is_ready():
+        return True
+
+    print("SDE database has not been imported.")
+    print("Use option [3] to import/update the SDE.")
+    return False
 
 def main():
-    print("ETU dev-0.0.1")
+    print("ETU dev-0.0.4")
     print()
     print("[1] Search inventory type by ID")
     print("[2] Search inventory type by name")
+    print("[3] Import/update SDE")
 
     choice = input("> ").strip()
 
-    try:
-        if choice == "1":
-            search_by_id()
+    if choice == "1":
+        search_by_id()
 
-        elif choice == "2":
-            search_by_name()
+    elif choice == "2":
+        search_by_name()
 
-        else:
-            print("Invalid option.")
+    elif choice == "3":
+        import_static_data()
 
-    except requests.HTTPError as error:
-        if error.response.status_code == 404:
-            print("ESI could not find that object.")
-        else:
-            print(f"ESI returned an error: {error}")
-
-    except requests.RequestException as error:
-        print(f"Network request failed: {error}")
+    else:
+        print("Invalid option.")
 
 if __name__ == "__main__":
     main()
