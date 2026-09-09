@@ -138,34 +138,100 @@ def require_sde():
     print("Use option [3] to import/update the SDE.")
     return False
 
+def inventory_menu():
+    while True:
+        print()
+        print("Inventory")
+        print()
+        print("[1] Search by ID")
+        print("[2] Search by name")
+        print("[B] Back")
+
+        choice = input("> ").strip().lower()
+
+        if choice == "1":
+            search_by_id()
+
+        elif choice == "2":
+            search_by_name()
+
+        elif choice == "b":
+            return
+
+        else:
+            print("Invalid option.")
+
+
+def universe_menu():
+    while True:
+        print()
+        print("Universe")
+        print()
+        print("[1] Search system by ID")
+        print("[2] Search system by name")
+        print("[B] Back")
+
+        choice = input("> ").strip().lower()
+
+        if choice == "1":
+            search_system_by_id()
+
+        elif choice == "2":
+            search_system_by_name()
+
+        elif choice == "b":
+            return
+
+        else:
+            print("Invalid option.")
+
+
+def data_menu():
+    while True:
+        print()
+        print("Data")
+        print()
+        print("[1] Import/update SDE")
+        print("[B] Back")
+
+        choice = input("> ").strip().lower()
+
+        if choice == "1":
+            import_static_data()
+
+        elif choice == "b":
+            return
+
+        else:
+            print("Invalid option.")
+
+
 def main():
-    print("ETU dev-0.0.5")
-    print()
-    print("[1] Search inventory type by ID")
-    print("[2] Search inventory type by name")
-    print("[3] Import/update SDE")
-    print("[4] Search solar system by ID")
-    print("[5] Search solar system by name")
+    while True:
+        print()
+        print("ETU dev-0.0.5")
+        print()
+        print("[1] Inventory")
+        print("[2] Universe")
+        print("[3] Data")
+        print("[Q] Quit")
 
-    choice = input("> ").strip()
+        choice = input("> ").strip().lower()
 
-    if choice == "1":
-        search_by_id()
+        if choice == "1":
+            inventory_menu()
 
-    elif choice == "2":
-        search_by_name()
+        elif choice == "2":
+            universe_menu()
 
-    elif choice == "3":
-        import_static_data()
+        elif choice == "3":
+            data_menu()
 
-    elif choice == "4":
-        search_system_by_id()
+        elif choice == "q":
+            break
 
-    elif choice == "5":
-        search_system_by_name()
-
-    else:
-        print("Invalid option.")
+        else:
+            print("Invalid option.")
 
 if __name__ == "__main__":
     main()
