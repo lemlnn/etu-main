@@ -1,4 +1,8 @@
 import sqlite3
+import json
+import sqlite3
+import zipfile
+import requests
 
 from etu import sde
 from etu.inventory import (
@@ -120,12 +124,22 @@ def search_system_by_id():
             f"Security: {connection['security_status']:.1f}"
         )
 
-def import_static_data():
+def update_static_data():
     try:
-        sde.import_sde()
+        sde.update_sde()
 
-    except FileNotFoundError as error:
-        print(error)
+    except requests.RequestException as error:
+        print(f"Download error: {error}")
+
+    except zipfile.BadZipFile:
+        print("Downloaded SDE archive is invalid.")
+
+    except (
+        FileNotFoundError,
+        RuntimeError,
+        json.JSONDecodeError,
+    ) as error:
+        print(f"SDE error: {error}")
 
     except sqlite3.Error as error:
         print(f"Database error: {error}")
@@ -191,13 +205,13 @@ def data_menu():
         print()
         print("Data")
         print()
-        print("[1] Import/update SDE")
+        print("[1] Check/update SDE")
         print("[B] Back")
 
         choice = input("> ").strip().lower()
 
         if choice == "1":
-            import_static_data()
+            update_static_data()
 
         elif choice == "b":
             return
@@ -209,7 +223,7 @@ def data_menu():
 def main():
     while True:
         print()
-        print("ETU dev-0.0.5")
+        print("ETU dev-0.0.7")
         print()
         print("[1] Inventory")
         print("[2] Universe")

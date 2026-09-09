@@ -1,13 +1,38 @@
 import json
+import shutil
 import sqlite3
+import tempfile
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 
+import requests
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 DATA_DIR = PROJECT_ROOT / "data"
 SDE_DIR = DATA_DIR / "sde"
 DB_PATH = DATA_DIR / "etu.db"
+
+LATEST_SDE_URL = (
+    "https://developers.eveonline.com/"
+    "static-data/tranquility/latest.jsonl"
+)
+
+SDE_DOWNLOAD_URL = (
+    "https://developers.eveonline.com/"
+    "static-data/tranquility/"
+    "eve-online-static-data-{build}-jsonl.zip"
+)
+
+REQUIRED_SDE_FILES = {
+    "categories.jsonl",
+    "groups.jsonl",
+    "types.jsonl",
+    "mapRegions.jsonl",
+    "mapConstellations.jsonl",
+    "mapSolarSystems.jsonl",
+    "mapStargates.jsonl",
+}
 
 def connect() -> sqlite3.Connection:
     """
@@ -130,21 +155,247 @@ def create_database():
             ON systems(name)
         """)
 
-def _require_sde_file(filename: str) -> Path:
-    """
-    Return the path to an SDE file or fail with a useful message.
-    """
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+            )
+        """)
 
-    path = SDE_DIR / filename
+def import_sde(
+    sde_dir: Path = SDE_DIR,
+    build: int | None = None,
+):
+    create_database()
+
+    with connect() as db:
+        db.execute("DELETE FROM stargates")
+        db.execute("DELETE FROM systems")
+        db.execute("DELETE FROM constellations")
+        db.execute("DELETE FROM regions")
+
+        db.execute("DELETE FROM types")
+        db.execute("DELETE FROM groups")
+        db.execute("DELETE FROM categories")
+
+        print("Importing categories...")
+        _import_categories(db, sde_dir)
+
+        print("Importing groups...")
+        _import_groups(db, sde_dir)
+
+        print("Importing types...")
+        _import_types(db, sde_dir)
+
+        print("Importing regions...")
+        _import_regions(db, sde_dir)
+
+        print("Importing constellations...")
+        _import_constellations(db, sde_dir)
+
+        print("Importing systems...")
+        _import_systems(db, sde_dir)
+
+        print("Importing stargates...")
+        _import_stargates(db, sde_dir)
+
+        if build is not None:
+            _set_sde_build(db, build)
+
+    print("SDE import complete.")
+
+def _require_sde_file(
+    filename: str,
+    sde_dir: Path = SDE_DIR,
+) -> Path:
+    path = sde_dir / filename
 
     if not path.exists():
         raise FileNotFoundError(
             f'Could not find "{filename}" in:\n'
-            f"{SDE_DIR}\n\n"
-            "Make sure the JSONL SDE files have been extracted there."
+            f"{sde_dir}"
         )
 
     return path
+
+def get_sde_build() -> int | None:
+    create_database()
+
+    with connect() as db:
+        result = db.execute("""
+            SELECT value
+            FROM metadata
+            WHERE key = 'sde_build'
+        """).fetchone()
+
+    if result is None:
+        return None
+
+    return int(result["value"])
+
+def get_latest_sde_build() -> int:
+    response = requests.get(
+        LATEST_SDE_URL,
+        timeout=15,
+    )
+
+    response.raise_for_status()
+
+    for line in response.text.splitlines():
+        if not line.strip():
+            continue
+
+        record = json.loads(line)
+
+        if record.get("_key") != "sde":
+            continue
+
+        if "buildNumber" in record:
+            return int(record["buildNumber"])
+
+        if "_value" in record:
+            value = record["_value"]
+
+            if isinstance(value, dict):
+                return int(value["buildNumber"])
+
+            return int(value)
+
+    raise RuntimeError(
+        "Could not find the SDE build number."
+    )
+
+def _download_sde(
+    build: int,
+    destination: Path,
+):
+    url = SDE_DOWNLOAD_URL.format(build=build)
+
+    response = requests.get(
+        url,
+        stream=True,
+        timeout=(10, 120),
+    )
+
+    response.raise_for_status()
+
+    downloaded = 0
+
+    with open(destination, "wb") as file:
+        for chunk in response.iter_content(
+            chunk_size=1024 * 1024
+        ):
+            if not chunk:
+                continue
+
+            file.write(chunk)
+
+            downloaded += len(chunk)
+
+            print(
+                f"\rDownloaded: "
+                f"{downloaded / 1024 / 1024:.1f} MiB",
+                end="",
+            )
+
+    print()
+
+def update_sde():
+    print("Checking for SDE updates...")
+
+    latest_build = get_latest_sde_build()
+    installed_build = get_sde_build()
+
+    print(
+        f"Installed SDE: "
+        f"{installed_build or 'unknown'}"
+    )
+    print(f"Latest SDE:    {latest_build}")
+
+    if installed_build == latest_build:
+        print("SDE is already up to date.")
+        return
+
+    with tempfile.TemporaryDirectory(
+        prefix="etu-sde-"
+    ) as temp:
+        temp_dir = Path(temp)
+
+        zip_path = temp_dir / "sde.zip"
+        extracted_dir = temp_dir / "sde"
+
+        print()
+        print("Downloading SDE...")
+
+        _download_sde(
+            latest_build,
+            zip_path,
+        )
+
+        print("Extracting required files...")
+
+        _extract_required_files(
+            zip_path,
+            extracted_dir,
+        )
+
+        print("Importing SDE...")
+
+        import_sde(
+            sde_dir=extracted_dir,
+            build=latest_build,
+        )
+
+    print(
+        f"SDE updated to build "
+        f"{latest_build}."
+    )
+
+def _extract_required_files(
+    zip_path: Path,
+    destination: Path,
+):
+    destination.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    found = set()
+
+    with zipfile.ZipFile(zip_path) as archive:
+        for member in archive.infolist():
+            filename = Path(member.filename).name
+
+            if filename not in REQUIRED_SDE_FILES:
+                continue
+
+            target = destination / filename
+
+            with archive.open(member) as source:
+                with open(target, "wb") as output:
+                    shutil.copyfileobj(source, output)
+
+            found.add(filename)
+
+    missing = REQUIRED_SDE_FILES - found
+
+    if missing:
+        missing_text = ", ".join(sorted(missing))
+
+        raise RuntimeError(
+            f"SDE archive is missing: {missing_text}"
+        )
+    
+def _set_sde_build(
+    db: sqlite3.Connection,
+    build: int,
+):
+    db.execute("""
+        INSERT INTO metadata (key, value)
+        VALUES ('sde_build', ?)
+        ON CONFLICT(key)
+        DO UPDATE SET value = excluded.value
+    """, (str(build),))
 
 def _read_jsonl(path: Path) -> Iterator[dict]:
     """
@@ -160,8 +411,14 @@ def _read_jsonl(path: Path) -> Iterator[dict]:
 
             yield json.loads(line)
 
-def _import_categories(db: sqlite3.Connection):
-    path = _require_sde_file("categories.jsonl")
+def _import_categories(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "categories.jsonl",
+        sde_dir,
+    )
 
     rows = (
         (
@@ -181,8 +438,14 @@ def _import_categories(db: sqlite3.Connection):
         VALUES (?, ?, ?)
     """, rows)
 
-def _import_groups(db: sqlite3.Connection):
-    path = _require_sde_file("groups.jsonl")
+def _import_groups(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "groups.jsonl",
+        sde_dir,
+    )
 
     rows = (
         (
@@ -204,8 +467,14 @@ def _import_groups(db: sqlite3.Connection):
         VALUES (?, ?, ?, ?)
     """, rows)
 
-def _import_types(db: sqlite3.Connection):
-    path = _require_sde_file("types.jsonl")
+def _import_types(    
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "types.jsonl",
+        sde_dir,
+    )
 
     def rows():
         for data in _read_jsonl(path):
@@ -234,48 +503,14 @@ def _import_types(db: sqlite3.Connection):
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, rows())
 
-def import_sde():
-    """
-    Rebuild ETU's local static-data tables from the SDE.
-    """
-
-    create_database()
-
-    with connect() as db:
-        db.execute("DELETE FROM stargates")
-        db.execute("DELETE FROM systems")
-        db.execute("DELETE FROM constellations")
-        db.execute("DELETE FROM regions")
-
-        db.execute("DELETE FROM types")
-        db.execute("DELETE FROM groups")
-        db.execute("DELETE FROM categories")
-
-        print("Importing categories...")
-        _import_categories(db)
-
-        print("Importing groups...")
-        _import_groups(db)
-
-        print("Importing types...")
-        _import_types(db)
-
-        print("Importing regions...")
-        _import_regions(db)
-
-        print("Importing constellations...")
-        _import_constellations(db)
-
-        print("Importing systems...")
-        _import_systems(db)
-
-        print("Importing stargates...")
-        _import_stargates(db)
-
-    print("SDE import complete.")
-
-def _import_regions(db: sqlite3.Connection):
-    path = _require_sde_file("mapRegions.jsonl")
+def _import_regions(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "mapRegions.jsonl",
+        sde_dir,
+    )
 
     rows = (
         (
@@ -297,8 +532,14 @@ def _import_regions(db: sqlite3.Connection):
         VALUES (?, ?, ?, ?)
     """, rows)
 
-def _import_constellations(db: sqlite3.Connection):
-    path = _require_sde_file("mapConstellations.jsonl")
+def _import_constellations(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "mapConstellations.jsonl",
+        sde_dir,
+    )
 
     rows = (
         (
@@ -322,8 +563,14 @@ def _import_constellations(db: sqlite3.Connection):
         VALUES (?, ?, ?, ?, ?)
     """, rows)
 
-def _import_systems(db: sqlite3.Connection):
-    path = _require_sde_file("mapSolarSystems.jsonl")
+def _import_systems(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "mapSolarSystems.jsonl",
+        sde_dir,
+    )
 
     rows = (
         (
@@ -353,8 +600,14 @@ def _import_systems(db: sqlite3.Connection):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, rows)
 
-def _import_stargates(db: sqlite3.Connection):
-    path = _require_sde_file("mapStargates.jsonl")
+def _import_stargates(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "mapStargates.jsonl",
+        sde_dir,
+    )
 
     rows = (
         (
