@@ -69,6 +69,67 @@ def create_database():
             ON types(name)
         """)
 
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS regions (
+                region_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                faction_id INTEGER,
+                wormhole_class_id INTEGER
+            )
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS constellations (
+                constellation_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                region_id INTEGER NOT NULL,
+                faction_id INTEGER,
+                wormhole_class_id INTEGER,
+
+                FOREIGN KEY (region_id)
+                    REFERENCES regions(region_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS systems (
+                system_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                constellation_id INTEGER NOT NULL,
+                region_id INTEGER NOT NULL,
+                security_status REAL NOT NULL,
+                security_class TEXT,
+                faction_id INTEGER,
+                wormhole_class_id INTEGER,
+
+                FOREIGN KEY (constellation_id)
+                    REFERENCES constellations(constellation_id),
+
+                FOREIGN KEY (region_id)
+                    REFERENCES regions(region_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS stargates (
+                stargate_id INTEGER PRIMARY KEY,
+                system_id INTEGER NOT NULL,
+                destination_system_id INTEGER NOT NULL,
+                destination_stargate_id INTEGER NOT NULL,
+
+                FOREIGN KEY (system_id)
+                    REFERENCES systems(system_id),
+
+                FOREIGN KEY (destination_system_id)
+                    REFERENCES systems(system_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_systems_name
+            ON systems(name)
+        """)
+
 def _require_sde_file(filename: str) -> Path:
     """
     Return the path to an SDE file or fail with a useful message.
@@ -181,6 +242,11 @@ def import_sde():
     create_database()
 
     with connect() as db:
+        db.execute("DELETE FROM stargates")
+        db.execute("DELETE FROM systems")
+        db.execute("DELETE FROM constellations")
+        db.execute("DELETE FROM regions")
+
         db.execute("DELETE FROM types")
         db.execute("DELETE FROM groups")
         db.execute("DELETE FROM categories")
@@ -194,11 +260,126 @@ def import_sde():
         print("Importing types...")
         _import_types(db)
 
+        print("Importing regions...")
+        _import_regions(db)
+
+        print("Importing constellations...")
+        _import_constellations(db)
+
+        print("Importing systems...")
+        _import_systems(db)
+
+        print("Importing stargates...")
+        _import_stargates(db)
+
     print("SDE import complete.")
+
+def _import_regions(db: sqlite3.Connection):
+    path = _require_sde_file("mapRegions.jsonl")
+
+    rows = (
+        (
+            data["_key"],
+            data["name"]["en"],
+            data.get("factionID"),
+            data.get("wormholeClassID"),
+        )
+        for data in _read_jsonl(path)
+    )
+
+    db.executemany("""
+        INSERT INTO regions (
+            region_id,
+            name,
+            faction_id,
+            wormhole_class_id
+        )
+        VALUES (?, ?, ?, ?)
+    """, rows)
+
+def _import_constellations(db: sqlite3.Connection):
+    path = _require_sde_file("mapConstellations.jsonl")
+
+    rows = (
+        (
+            data["_key"],
+            data["name"]["en"],
+            data["regionID"],
+            data.get("factionID"),
+            data.get("wormholeClassID"),
+        )
+        for data in _read_jsonl(path)
+    )
+
+    db.executemany("""
+        INSERT INTO constellations (
+            constellation_id,
+            name,
+            region_id,
+            faction_id,
+            wormhole_class_id
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, rows)
+
+def _import_systems(db: sqlite3.Connection):
+    path = _require_sde_file("mapSolarSystems.jsonl")
+
+    rows = (
+        (
+            data["_key"],
+            data["name"]["en"],
+            data["constellationID"],
+            data["regionID"],
+            data["securityStatus"],
+            data.get("securityClass"),
+            data.get("factionID"),
+            data.get("wormholeClassID"),
+        )
+        for data in _read_jsonl(path)
+    )
+
+    db.executemany("""
+        INSERT INTO systems (
+            system_id,
+            name,
+            constellation_id,
+            region_id,
+            security_status,
+            security_class,
+            faction_id,
+            wormhole_class_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, rows)
+
+def _import_stargates(db: sqlite3.Connection):
+    path = _require_sde_file("mapStargates.jsonl")
+
+    rows = (
+        (
+            data["_key"],
+            data["solarSystemID"],
+            data["destination"]["solarSystemID"],
+            data["destination"]["stargateID"],
+        )
+        for data in _read_jsonl(path)
+    )
+
+    db.executemany("""
+        INSERT INTO stargates (
+            stargate_id,
+            system_id,
+            destination_system_id,
+            destination_stargate_id
+        )
+        VALUES (?, ?, ?, ?)
+    """, rows)
 
 def is_ready() -> bool:
     """
-    Return True if the local SDE database exists and contains types.
+    Return True if the local SDE database exists and contains
+    inventory types and solar systems.
     """
 
     if not DB_PATH.exists():
@@ -206,11 +387,15 @@ def is_ready() -> bool:
 
     try:
         with connect() as db:
-            result = db.execute(
+            types = db.execute(
                 "SELECT COUNT(*) FROM types"
             ).fetchone()
 
-            return result[0] > 0
+            systems = db.execute(
+                "SELECT COUNT(*) FROM systems"
+            ).fetchone()
+
+            return types[0] > 0 and systems[0] > 0
 
     except sqlite3.OperationalError:
         return False
@@ -335,5 +520,88 @@ def find_types(name: str, limit: int = 25) -> list[dict]:
             name,
             limit,
         )).fetchall()
+
+    return [dict(result) for result in results]
+
+def get_system(system_id: int) -> dict | None:
+    with connect() as db:
+        result = db.execute("""
+            SELECT
+                systems.system_id,
+                systems.name,
+                systems.security_status,
+                systems.security_class,
+                systems.faction_id,
+                systems.wormhole_class_id,
+
+                constellations.constellation_id,
+                constellations.name AS constellation_name,
+
+                regions.region_id,
+                regions.name AS region_name
+
+            FROM systems
+
+            JOIN constellations
+                ON systems.constellation_id = constellations.constellation_id
+
+            JOIN regions
+                ON systems.region_id = regions.region_id
+
+            WHERE systems.system_id = ?
+        """, (system_id,)).fetchone()
+
+    if result is None:
+        return None
+
+    return dict(result)
+
+def find_systems(name: str, limit: int = 25) -> list[dict]:
+    search = f"%{name}%"
+
+    with connect() as db:
+        results = db.execute("""
+            SELECT
+                system_id,
+                name,
+                security_status
+
+            FROM systems
+
+            WHERE name LIKE ? COLLATE NOCASE
+
+            ORDER BY
+                CASE
+                    WHEN lower(name) = lower(?) THEN 0
+                    ELSE 1
+                END,
+                name
+
+            LIMIT ?
+        """, (
+            search,
+            name,
+            limit,
+        )).fetchall()
+
+    return [dict(result) for result in results]
+
+def get_system_connections(system_id: int) -> list[dict]:
+    with connect() as db:
+        results = db.execute("""
+            SELECT
+                systems.system_id,
+                systems.name,
+                systems.security_status
+
+            FROM stargates
+
+            JOIN systems
+                ON stargates.destination_system_id = systems.system_id
+
+            WHERE stargates.system_id = ?
+
+            ORDER BY systems.name
+        """, (system_id,)).fetchall()
 
     return [dict(result) for result in results]
