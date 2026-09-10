@@ -1,3 +1,5 @@
+"""inventory cli flow. this module handles prompts and result selection while the actual lookups stay in ``etu.inventory``"""
+
 from etu.cli.common import require_sde
 from etu.cli.search import merge_matches
 from etu.inventory import (
@@ -100,6 +102,7 @@ def resolve_type():
 
     partial_matches = find_type(name)
 
+    # if the player typed the exact item name, the selection menu is skipped entirely
     exact_match = next(
         (
             match
@@ -112,6 +115,7 @@ def resolve_type():
     if exact_match is not None:
         return exact_match
 
+    # otherwise typo-tolerant results are mixed with normal partial matches
     fuzzy_matches = find_type_fuzzy(name)
 
     matches = merge_matches(

@@ -1,3 +1,5 @@
+"""top-level etu menu. it stays focused on routing so adding features does not turn the entry point into another giant file"""
+
 from etu.cli.data import data_menu
 from etu.cli.inventory import inventory_menu
 from etu.cli.market import market_menu

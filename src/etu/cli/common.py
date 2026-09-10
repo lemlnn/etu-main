@@ -1,3 +1,5 @@
+"""small helpers shared by the cli. right now this mostly makes sure the local sde is ready before other cli code uses it"""
+
 from etu import sde
 
 

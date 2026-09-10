@@ -1,3 +1,5 @@
+"""low-level universe queries for systems, regions, and static stargate links. fuzzy lookup works directly from the sde names here"""
+
 from rapidfuzz import fuzz, process
 
 from etu.sde.database import connect
@@ -66,6 +68,7 @@ def find_systems(name: str, limit: int = 25) -> list[dict]:
 
     return [dict(result) for result in results]
 
+# these are static stargate links from the sde; dynamic wormhole connections are not part of this data
 def get_system_connections(system_id: int) -> list[dict]:
     with connect() as db:
         results = db.execute("""
@@ -108,6 +111,7 @@ def find_systems_fuzzy(
         for row in rows
     }
 
+    # fuzzy matching is useful for normal typos; the cli adds extra prefix ranking for j-space searches
     matches = process.extract(
         name,
         choices,

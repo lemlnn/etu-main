@@ -1,3 +1,5 @@
+"""sqlite setup and metadata helpers for etu's local sde copy. the schema stays in one place for the importer to build on"""
+
 import sqlite3
 from pathlib import Path
 
@@ -11,12 +13,13 @@ DB_PATH = DATA_DIR / "etu.db"
 
 def connect() -> sqlite3.Connection:
     """
-    Open ETU's local SQLite database.
+    open etu's local sqlite database
     """
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     db = sqlite3.connect(DB_PATH)
+    # named columns make the query layer much easier to turn into normal dictionaries
     db.row_factory = sqlite3.Row
 
     db.execute("PRAGMA foreign_keys = ON")
@@ -25,7 +28,7 @@ def connect() -> sqlite3.Connection:
 
 def create_database():
     """
-    Create ETU's static-data tables if they do not already exist.
+    create etu's static-data tables if they do not already exist
     """
 
     with connect() as db:
@@ -130,6 +133,7 @@ def create_database():
             ON systems(name)
         """)
 
+        # the installed sde build is stored here so the updater knows whether it actually needs to download anything
         db.execute("""
             CREATE TABLE IF NOT EXISTS metadata (
             key TEXT PRIMARY KEY,
@@ -165,8 +169,8 @@ def _set_sde_build(
 
 def is_ready() -> bool:
     """
-    Return True if the local SDE database exists and contains
-    inventory types and solar systems.
+    return true if the local sde database exists and contains
+    inventory types and solar systems
     """
 
     if not DB_PATH.exists():

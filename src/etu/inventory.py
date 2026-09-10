@@ -1,3 +1,5 @@
+"""inventory service layer between the cli and sde. it also cleans ccp item descriptions before displaying them"""
+
 import re
 
 from etu import sde

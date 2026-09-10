@@ -1,3 +1,5 @@
+"""data menu for checking and updating the sde. common failures are handled here instead of dropping out of the cli"""
+
 import json
 import sqlite3
 import zipfile

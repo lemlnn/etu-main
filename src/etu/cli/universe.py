@@ -1,3 +1,5 @@
+"""universe submenu. this file stays simple while the system and region modules handle their own searches"""
+
 from etu.cli.regions import (
     search_region_by_id,
     search_region_by_name,

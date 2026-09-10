@@ -1,3 +1,5 @@
+"""market data helpers. esi provides regional orders, and this layer can narrow them to a selected system"""
+
 import requests
 
 from etu import esi
@@ -11,6 +13,7 @@ def get_orders(region_id, type_id, system_id=None):
         },
     )
 
+    # the esi route is regional, so system scope is a local filter on the returned orders
     if system_id is not None:
         response = [
             order
@@ -73,6 +76,7 @@ def get_best_sell(region_id, type_id, system_id=None):
     return cheapest_sell
 
 def get_location_names(location_ids):
+    # public name resolution works for normal stations; larger structure ids are left for sso later
     station_ids = [
         location_id
         for location_id in set(location_ids)

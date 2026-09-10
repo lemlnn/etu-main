@@ -1,3 +1,5 @@
+"""public surface for the sde package. it re-exports the useful pieces so the rest of etu does not care how this folder is split"""
+
 from etu.sde.database import (
     DATA_DIR,
     DB_PATH,

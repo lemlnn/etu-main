@@ -1,3 +1,5 @@
+"""small public esi client. raw http and pagination behavior stay here so feature modules do not repeat it"""
+
 import requests
 
 BASE_URL = "https://esi.evetech.net"
@@ -32,6 +34,8 @@ def get_pages(path: str, params: dict | None = None) -> list:
     response.raise_for_status()
 
     records = response.json()
+
+    # some esi routes spread results across pages, so the first response is used to find the total
     total_pages = int(response.headers.get("X-Pages", 1))
 
     for page in range(2, total_pages + 1):

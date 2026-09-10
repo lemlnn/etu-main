@@ -1,3 +1,5 @@
+"""sde jsonl importer. it streams the files and loads tables in dependency order so the large dataset stays manageable"""
+
 import json
 import sqlite3
 from collections.abc import Iterator
@@ -18,6 +20,7 @@ def import_sde(
     create_database()
 
     with connect() as db:
+        # foreign keys are enabled, so child tables are cleared before the tables they depend on
         db.execute("DELETE FROM stargates")
         db.execute("DELETE FROM systems")
         db.execute("DELETE FROM constellations")
@@ -69,9 +72,10 @@ def _require_sde_file(
 
 def _read_jsonl(path: Path) -> Iterator[dict]:
     """
-    Stream a JSON Lines file one record at a time.
+    stream a json lines file one record at a time
     """
 
+    # types.jsonl is large enough that loading the whole thing at once would just waste memory
     with open(path, encoding="utf-8") as file:
         for line in file:
             line = line.strip()

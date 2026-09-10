@@ -1,3 +1,5 @@
+"""region search ui. it stays separate from systems because both search paths are already growing on their own"""
+
 from etu.cli.common import require_sde
 from etu.cli.search import merge_matches
 from etu.universe import (
@@ -43,6 +45,7 @@ def resolve_region():
 
     partial_matches = find_region(name)
 
+    # exact names can go straight through without making the player choose them again
     exact_match = next(
         (
             match

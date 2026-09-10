@@ -1,3 +1,5 @@
+"""solar-system search ui. the prefix ranking is intentional because j-space names behave badly with plain fuzzy matching"""
+
 from etu.cli.common import require_sde
 from etu.cli.search import (
     merge_matches,
@@ -135,6 +137,7 @@ def resolve_system():
     if exact_match is not None:
         return exact_match
 
+    # both fuzzy and partial candidates are kept, then ranked before the list is cut down to ten
     fuzzy_matches = find_system_fuzzy(name)
 
     matches = merge_matches(

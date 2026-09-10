@@ -1,3 +1,5 @@
+"""low-level inventory queries against etu's sqlite sde. the queries return plain dictionaries so higher layers stay simple"""
+
 from rapidfuzz import fuzz, process
 
 from etu.sde.database import connect
@@ -44,7 +46,7 @@ def get_group(group_id: int) -> dict | None:
 
 def get_type(type_id: int) -> dict | None:
     """
-    Return an inventory type with its group/category already resolved.
+    return an inventory type with its group/category already resolved
     """
 
     with connect() as db:
@@ -81,9 +83,9 @@ def get_type(type_id: int) -> dict | None:
 
 def find_types(name: str, limit: int = 25) -> list[dict]:
     """
-    Search inventory types by name.
+    search inventory types by name
 
-    Exact matches are sorted first, followed by partial matches.
+    exact matches are sorted first, followed by partial matches
     """
 
     search = f"%{name}%"
@@ -159,6 +161,7 @@ def find_types_fuzzy(
         for row in rows
     }
 
+    # rapidfuzz adds typo tolerance without changing the exact/partial sql search path
     matches = process.extract(
         name,
         choices,

@@ -1,3 +1,5 @@
+"""universe service layer between the cli and sde. it attaches static stargate connections before returning a full system result"""
+
 from etu import sde
 
 
@@ -7,6 +9,7 @@ def get_system(system_id: int) -> dict | None:
     if data is None:
         return None
 
+    # connections are attached here so callers get one complete system object instead of doing another lookup themselves
     data["connections"] = sde.get_system_connections(system_id)
 
     return data

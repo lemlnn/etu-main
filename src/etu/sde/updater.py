@@ -1,3 +1,5 @@
+"""sde updater. it downloads into a temporary directory, extracts only what etu uses, then hands it to the importer"""
+
 import json
 import shutil
 import tempfile
@@ -115,6 +117,7 @@ def update_sde():
         print("SDE is already up to date.")
         return
 
+    # downloads stay temporary so a failed update does not leave random archives around the project
     with tempfile.TemporaryDirectory(
         prefix="etu-sde-"
     ) as temp:
@@ -165,6 +168,7 @@ def _extract_required_files(
         for member in archive.infolist():
             filename = Path(member.filename).name
 
+            # the full sde has a lot etu does not use yet, so only the files the importer understands are extracted
             if filename not in REQUIRED_SDE_FILES:
                 continue
 

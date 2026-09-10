@@ -1,3 +1,5 @@
+"""market cli flow. this module handles scope selection and readable output while ``etu.market`` deals with the esi data"""
+
 import requests
 
 from etu.cli.common import require_sde
@@ -54,6 +56,7 @@ def search_market_orders():
         print("No market orders found.")
         return
 
+    # sell orders read naturally cheapest-first; buy orders are the opposite
     sell_orders = sorted(
         [
             order
@@ -73,6 +76,7 @@ def search_market_orders():
         reverse=True,
     )
 
+    # resolve all public station names in one batch instead of making a request per order
     location_ids = [
         order["location_id"]
         for order in orders
@@ -170,6 +174,7 @@ def get_market_selection():
         choice = input("> ").strip().lower()
 
         if choice == "1":
+            # esi market orders are regional, but the result can be filtered down to this system later
             system_match = resolve_system()
 
             if system_match is None:
