@@ -1,7 +1,9 @@
+import requests
+
 from etu import esi
 
-def get_orders(region_id, type_id):
-    response = esi.get(
+def get_orders(region_id, type_id, system_id=None):
+    response = esi.get_pages(
         f"/markets/{region_id}/orders",
         params={
             "order_type": "all",
@@ -9,18 +11,33 @@ def get_orders(region_id, type_id):
         },
     )
 
+    if system_id is not None:
+        response = [
+            order
+            for order in response
+            if order["system_id"] == system_id
+        ]
+
     return response
 
-def get_best_buy(region_id, type_id):
-    orders = get_orders(region_id, type_id)
+def get_best_buy(region_id, type_id, system_id=None):
+    orders = get_orders(
+        region_id,
+        type_id,
+        system_id,
+    )
 
-    if orders is None:
+    if not orders:
         return None
+
     buy_orders = [
         order
         for order in orders
         if order["is_buy_order"]
     ]
+
+    if not buy_orders:
+        return None
 
     highest_buy = max(
         order["price"]
@@ -29,10 +46,14 @@ def get_best_buy(region_id, type_id):
 
     return highest_buy
 
-def get_best_sell(region_id, type_id):
-    orders = get_orders(region_id, type_id)
+def get_best_sell(region_id, type_id, system_id=None):
+    orders = get_orders(
+        region_id,
+        type_id,
+        system_id,
+    )
 
-    if orders is None:
+    if not orders:
         return None
 
     sell_orders = [
@@ -41,9 +62,36 @@ def get_best_sell(region_id, type_id):
         if not order["is_buy_order"]
     ]
 
+    if not sell_orders:
+        return None
+
     cheapest_sell = min(
         order["price"]
         for order in sell_orders
     )
 
     return cheapest_sell
+
+def get_location_names(location_ids):
+    station_ids = [
+        location_id
+        for location_id in set(location_ids)
+        if location_id <= 2_147_483_647
+    ]
+
+    if not station_ids:
+        return {}
+
+    try:
+        results = esi.post(
+            "/universe/names",
+            station_ids,
+        )
+    except requests.HTTPError:
+        return {}
+
+    return {
+        result["id"]: result["name"]
+        for result in results
+        if result["category"] == "station"
+    }
