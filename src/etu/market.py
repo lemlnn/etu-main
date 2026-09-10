@@ -34,7 +34,7 @@ def get_best_sell(region_id, type_id):
 
     if orders is None:
         return None
-    
+
     sell_orders = [
         order
         for order in orders

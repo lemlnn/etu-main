@@ -3,7 +3,7 @@ import re
 from etu import sde
 
 
-def clean_description(description: str) -> str: 
+def clean_description(description: str) -> str:
     description = description.replace("<br>", "\n")
     return re.sub(r"<[^>]+>", "", description)
 
