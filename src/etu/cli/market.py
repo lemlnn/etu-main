@@ -73,8 +73,12 @@ def print_reachable_buy_orders(orders, location_names):
         )
 
         distance = order.get("distance")
+        order_range = order["range"]
 
-        if distance == 0:
+        if order_range == "station":
+            distance_text = "location required"
+
+        elif distance == 0:
             distance_text = "same system"
 
         elif distance == 1:
