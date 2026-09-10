@@ -1,25 +1,29 @@
-import sqlite3
 import json
 import sqlite3
 import zipfile
+
 import requests
 
 from etu import sde
 from etu.inventory import (
     find_type,
     get_type,
-    get_group,
-    get_category,
 )
 from etu.universe import (
     find_system,
     get_system,
 )
+from etu.market import (
+    get_orders,
+    get_best_buy,
+    get_best_sell,
+)
+
 
 def search_by_id():
     if not require_sde():
         return
-    
+
     raw_id = input("Type ID: ").strip()
 
     try:
@@ -47,10 +51,11 @@ def search_by_id():
         print("Description:")
         print(description)
 
+
 def search_by_name():
     if not require_sde():
         return
-    
+
     name = input("Item name: ").strip()
 
     matches = find_type(name)
@@ -64,6 +69,7 @@ def search_by_name():
             f"{match['name']} - ID: {match['type_id']} - "
             f"{match['group_name']} - {match['category_name']}"
         )
+
 
 def search_system_by_name():
     if not require_sde():
@@ -82,6 +88,7 @@ def search_system_by_name():
             f"{match['name']} - ID: {match['system_id']} - "
             f"Security: {match['security_status']:.1f}"
         )
+
 
 def search_system_by_id():
     if not require_sde():
@@ -105,10 +112,12 @@ def search_system_by_id():
     print(f"Name: {system.get('name')}")
     print(f"System ID: {system_id}")
     print(f"Security: {system.get('security_status'):.1f}")
+
     print(
         f"Constellation: {system.get('constellation_name')} - "
         f"ID: {system.get('constellation_id')}"
     )
+
     print(
         f"Region: {system.get('region_name')} - "
         f"ID: {system.get('region_id')}"
@@ -123,6 +132,85 @@ def search_system_by_id():
             f"ID: {connection['system_id']} - "
             f"Security: {connection['security_status']:.1f}"
         )
+
+
+def get_market_ids():
+    raw_region_id = input("Region ID: ").strip()
+    raw_type_id = input("Type ID: ").strip()
+
+    try:
+        region_id = int(raw_region_id)
+        type_id = int(raw_type_id)
+
+    except ValueError:
+        print("Region ID and Type ID must be numbers.")
+        return None
+
+    return region_id, type_id
+
+
+def search_market_orders():
+    ids = get_market_ids()
+
+    if ids is None:
+        return
+
+    region_id, type_id = ids
+
+    orders = get_orders(region_id, type_id)
+
+    if not orders:
+        print("No market orders found.")
+        return
+
+    print()
+
+    for order in orders:
+        order_type = "BUY" if order["is_buy_order"] else "SELL"
+
+        print(
+            f"{order_type} - "
+            f"{order['price']:,.2f} ISK - "
+            f"Volume: {order['volume_remain']:,} - "
+            f"Location: {order['location_id']}"
+        )
+
+
+def search_best_buy():
+    ids = get_market_ids()
+
+    if ids is None:
+        return
+
+    region_id, type_id = ids
+
+    price = get_best_buy(region_id, type_id)
+
+    if price is None:
+        print("No buy orders found.")
+        return
+
+    print()
+    print(f"Best buy: {price:,.2f} ISK")
+
+
+def search_best_sell():
+    ids = get_market_ids()
+
+    if ids is None:
+        return
+
+    region_id, type_id = ids
+
+    price = get_best_sell(region_id, type_id)
+
+    if price is None:
+        print("No sell orders found.")
+        return
+
+    print()
+    print(f"Best sell: {price:,.2f} ISK")
+
 
 def update_static_data():
     try:
@@ -144,13 +232,16 @@ def update_static_data():
     except sqlite3.Error as error:
         print(f"Database error: {error}")
 
+
 def require_sde():
     if sde.is_ready():
         return True
 
     print("SDE database has not been imported.")
-    print("Use option [3] to import/update the SDE.")
+    print("Use the Data menu to import/update the SDE.")
+
     return False
+
 
 def inventory_menu():
     while True:
@@ -200,6 +291,38 @@ def universe_menu():
             print("Invalid option.")
 
 
+def market_menu():
+    while True:
+        print()
+        print("Market")
+        print()
+        print("[1] Search all orders for an item")
+        print("[2] Search best buy order in region for an item")
+        print("[3] Search best sell order in region for an item")
+        print("[B] Back")
+
+        choice = input("> ").strip().lower()
+
+        try:
+            if choice == "1":
+                search_market_orders()
+
+            elif choice == "2":
+                search_best_buy()
+
+            elif choice == "3":
+                search_best_sell()
+
+            elif choice == "b":
+                return
+
+            else:
+                print("Invalid option.")
+
+        except requests.RequestException as error:
+            print(f"ESI request failed: {error}")
+
+
 def data_menu():
     while True:
         print()
@@ -227,7 +350,8 @@ def main():
         print()
         print("[1] Inventory")
         print("[2] Universe")
-        print("[3] Data")
+        print("[3] Market")
+        print("[4] Data")
         print("[Q] Quit")
 
         choice = input("> ").strip().lower()
@@ -239,6 +363,9 @@ def main():
             universe_menu()
 
         elif choice == "3":
+            market_menu()
+
+        elif choice == "4":
             data_menu()
 
         elif choice == "q":
@@ -246,6 +373,7 @@ def main():
 
         else:
             print("Invalid option.")
+
 
 if __name__ == "__main__":
     main()
