@@ -26,3 +26,6 @@ def get_category(category_id: int) -> dict | None:
 
 def find_type(name: str) -> list[dict]:
     return sde.find_types(name)
+
+def find_type_fuzzy(name: str) -> list[dict]:
+    return sde.find_types_fuzzy(name)
