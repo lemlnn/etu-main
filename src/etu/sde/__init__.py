@@ -23,6 +23,7 @@ from etu.sde.universe import (
     find_regions_fuzzy,
     find_systems,
     find_systems_fuzzy,
+    get_jump_distances,
     get_region,
     get_system,
     get_system_connections,

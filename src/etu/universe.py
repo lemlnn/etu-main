@@ -28,3 +28,9 @@ def find_region(name: str) -> list[dict]:
 
 def find_region_fuzzy(name: str) -> list[dict]:
     return sde.find_regions_fuzzy(name)
+
+def get_jump_distances(system_id: int, max_jumps: int = 40) -> dict[int, int]:
+    return sde.get_jump_distances(
+        system_id,
+        max_jumps,
+    )

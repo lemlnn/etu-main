@@ -9,7 +9,7 @@ from etu.cli.universe import universe_menu
 def main():
     while True:
         print()
-        print("ETU dev-0.0.9")
+        print("ETU dev-0.1.1")
         print()
         print("[1] Inventory")
         print("[2] Universe")

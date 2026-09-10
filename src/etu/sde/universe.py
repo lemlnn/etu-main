@@ -1,6 +1,7 @@
 """low-level universe queries for systems, regions, and static stargate links. fuzzy lookup works directly from the sde names here"""
 
 from rapidfuzz import fuzz, process
+from collections import deque
 
 from etu.sde.database import connect
 
@@ -88,6 +89,53 @@ def get_system_connections(system_id: int) -> list[dict]:
         """, (system_id,)).fetchall()
 
     return [dict(result) for result in results]
+
+def get_jump_distances(system_id: int, max_jumps: int = 40) -> dict[int, int]:
+    with connect() as db:
+        results = db.execute("""
+            SELECT
+                system_id,
+                destination_system_id
+
+            FROM stargates
+        """).fetchall()
+
+    graph = {}
+
+    for result in results:
+        graph.setdefault(
+            result["system_id"],
+            [],
+        ).append(
+            result["destination_system_id"]
+        )
+
+    distances = {
+        system_id: 0,
+    }
+
+    queue = deque([
+        system_id,
+    ])
+
+    while queue:
+        current_system_id = queue.popleft()
+        current_distance = distances[current_system_id]
+
+        if current_distance >= max_jumps:
+            continue
+
+        for destination_system_id in graph.get(
+            current_system_id,
+            [],
+        ):
+            if destination_system_id in distances:
+                continue
+
+            distances[destination_system_id] = current_distance + 1
+            queue.append(destination_system_id)
+
+    return distances
 
 def find_systems_fuzzy(
     name: str,

@@ -3,6 +3,7 @@
 import requests
 
 from etu import esi
+from etu.universe import get_jump_distances
 
 def get_orders(region_id, type_id, system_id=None):
     response = esi.get_pages(
@@ -99,3 +100,54 @@ def get_location_names(location_ids):
         for result in results
         if result["category"] == "station"
     }
+
+def get_buy_orders_reaching_system(region_id, type_id, system_id):
+    orders = get_orders(
+        region_id,
+        type_id,
+    )
+
+    distances = get_jump_distances(
+        system_id,
+        40,
+    )
+
+    matching_orders = []
+
+    for order in orders:
+        if not order["is_buy_order"]:
+            continue
+
+        order_range = order["range"]
+        order_system_id = order["system_id"]
+        distance = distances.get(order_system_id)
+
+        if order_range == "region":
+            matches = True
+
+        elif order_range == "solarsystem":
+            matches = order_system_id == system_id
+
+        elif order_range == "station":
+            matches = order_system_id == system_id
+
+        else:
+            try:
+                max_jumps = int(order_range)
+            except ValueError:
+                continue
+
+            matches = (
+                distance is not None
+                and distance <= max_jumps
+            )
+
+        if not matches:
+            continue
+
+        result = dict(order)
+        result["distance"] = distance
+
+        matching_orders.append(result)
+
+    return matching_orders
