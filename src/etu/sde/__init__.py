@@ -25,6 +25,7 @@ from etu.sde.universe import (
     find_systems_fuzzy,
     get_jump_distances,
     get_region,
+    get_route,
     get_system,
     get_system_connections,
 )

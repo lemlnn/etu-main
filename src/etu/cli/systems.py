@@ -120,8 +120,12 @@ def select_system(matches):
 
         print("Invalid option.")
 
-def resolve_system():
-    name = input("System: ").strip()
+def resolve_system(prompt="System"):
+    name = input(f"{prompt}: ").strip()
+
+    if not name:
+        print("System name cannot be empty.")
+        return None
 
     partial_matches = find_system(name)
 

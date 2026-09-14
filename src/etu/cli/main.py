@@ -4,17 +4,19 @@ from etu.cli.data import data_menu
 from etu.cli.inventory import inventory_menu
 from etu.cli.market import market_menu
 from etu.cli.universe import universe_menu
+from etu.cli.navigation import navigation_menu
 
 
 def main():
     while True:
         print()
-        print("ETU dev-0.1.2")
+        print("ETU dev-0.1.3")
         print()
         print("[1] Inventory")
         print("[2] Universe")
         print("[3] Market")
-        print("[4] Data")
+        print("[4] Navigation")
+        print("[5] Data")
         print("[Q] Quit")
 
         choice = input("> ").strip().lower()
@@ -29,6 +31,9 @@ def main():
             market_menu()
 
         elif choice == "4":
+            navigation_menu()
+
+        elif choice == "5":
             data_menu()
 
         elif choice == "q":
