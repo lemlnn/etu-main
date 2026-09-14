@@ -12,10 +12,13 @@ from etu.market import (
     get_best_sell,
     get_buy_orders_reaching_system,
     get_location_names,
+    get_history,
+    get_history_stats,
 )
 from etu.universe import get_system
 
 ORDER_DISPLAY_LIMIT = 10
+HISTORY_DISPLAY_LIMIT = 10
 
 def print_order_group(title, orders, location_names):
     print(title)
@@ -272,6 +275,80 @@ def search_best_sell():
     print(f"Region: {selection['region_name']}")
     print(f"Best sell: {price:,.2f} ISK")
 
+def search_market_history():
+    if not require_sde():
+        return
+
+    item = resolve_type()
+
+    if item is None:
+        return
+
+    region = resolve_region()
+
+    if region is None:
+        return
+
+    history = get_history(
+        region["region_id"],
+        item["type_id"],
+    )
+
+    if not history:
+        print("No market history found.")
+        return
+
+    history = sorted(
+        history,
+        key=lambda day: day["date"],
+    )
+
+    stats = get_history_stats(
+        history,
+        30,
+    )
+
+    latest = stats["latest"]
+
+    print()
+    print(f"Item: {item['name']}")
+    print(f"Region: {region['name']}")
+
+    print()
+    print("Latest Market Day")
+    print()
+    print(f"Date: {latest['date']}")
+    print(f"Average: {latest['average']:,.2f} ISK")
+    print(f"High: {latest['highest']:,.2f} ISK")
+    print(f"Low: {latest['lowest']:,.2f} ISK")
+    print(f"Volume: {latest['volume']:,}")
+    print(f"Orders: {latest['order_count']:,}")
+
+    print()
+    print(f"{stats['days']} Day Summary")
+    print()
+    print(f"Average: {stats['average']:,.2f} ISK")
+    print(f"High: {stats['highest']:,.2f} ISK")
+    print(f"Low: {stats['lowest']:,.2f} ISK")
+    print(f"Total Volume: {stats['total_volume']:,}")
+    print(f"Average Daily Volume: {stats['average_daily_volume']:,.0f}")
+    print(f"Orders: {stats['order_count']:,}")
+
+    print()
+    print("Recent History")
+    print()
+
+    for day in reversed(
+        history[-HISTORY_DISPLAY_LIMIT:]
+    ):
+        print(
+            f"{day['date']} - "
+            f"Average: {day['average']:,.2f} ISK - "
+            f"Low: {day['lowest']:,.2f} ISK - "
+            f"High: {day['highest']:,.2f} ISK - "
+            f"Volume: {day['volume']:,}"
+        )
+
 def get_market_selection():
     if not require_sde():
         return None
@@ -339,6 +416,7 @@ def market_menu():
         print("[2] Search best buy order for an item")
         print("[3] Search best sell order for an item")
         print("[4] Find buy orders reachable from a system")
+        print("[5] View market history")
         print("[B] Back")
 
         choice = input("> ").strip().lower()
@@ -355,6 +433,9 @@ def market_menu():
 
             elif choice == "4":
                 search_reachable_buy_orders()
+
+            elif choice == "5":
+                search_market_history()
 
             elif choice == "b":
                 return

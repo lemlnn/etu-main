@@ -151,3 +151,61 @@ def get_buy_orders_reaching_system(region_id, type_id, system_id):
         matching_orders.append(result)
 
     return matching_orders
+
+def get_history(region_id, type_id):
+    response = esi.get(
+        f"/markets/{region_id}/history",
+        params={
+            "type_id": type_id,
+        },
+    )
+
+    return response
+
+def get_history_stats(history, days=30):
+    if not history:
+        return None
+
+    history = sorted(
+        history,
+        key=lambda day: day["date"],
+    )
+
+    period = history[-days:]
+
+    total_volume = sum(
+        day["volume"]
+        for day in period
+    )
+
+    if total_volume > 0:
+        average_price = sum(
+            day["average"] * day["volume"]
+            for day in period
+        ) / total_volume
+
+    else:
+        average_price = sum(
+            day["average"]
+            for day in period
+        ) / len(period)
+
+    return {
+        "days": len(period),
+        "average": average_price,
+        "highest": max(
+            day["highest"]
+            for day in period
+        ),
+        "lowest": min(
+            day["lowest"]
+            for day in period
+        ),
+        "total_volume": total_volume,
+        "average_daily_volume": total_volume / len(period),
+        "order_count": sum(
+            day["order_count"]
+            for day in period
+        ),
+        "latest": period[-1],
+    }
