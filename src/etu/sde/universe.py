@@ -1,6 +1,7 @@
 """low-level universe queries for systems, regions, and static stargate links. fuzzy lookup works directly from the sde names here"""
 
 from collections import deque
+from functools import cache
 import heapq
 
 from rapidfuzz import fuzz, process
@@ -92,6 +93,7 @@ def get_system_connections(system_id: int) -> list[dict]:
 
     return [dict(result) for result in results]
 
+@cache
 def _get_stargate_graph() -> dict[int, list[int]]:
     with connect() as db:
         results = db.execute("""
@@ -114,6 +116,7 @@ def _get_stargate_graph() -> dict[int, list[int]]:
 
     return graph
 
+@cache
 def _get_system_security() -> dict[int, float]:
     with connect() as db:
         results = db.execute("""
@@ -128,6 +131,10 @@ def _get_system_security() -> dict[int, float]:
         result["system_id"]: result["security_status"]
         for result in results
     }
+
+def clear_universe_cache():
+    _get_stargate_graph.cache_clear()
+    _get_system_security.cache_clear()
 
 def _get_route_details(route_ids: list[int]) -> list[dict]:
     placeholders = ", ".join(
