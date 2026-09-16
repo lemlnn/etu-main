@@ -44,8 +44,14 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 
 - search inventory types by ID or name
 - fuzzy name matching for misspelled item names
-- view type, group, and category IDs
-- view volume, publication state, and cleaned item descriptions
+- view type, group, category, volume, publication state, and descriptions
+- identify Tech II, Tech III, faction, deadspace, officer, storyline, abyssal, limited-time, premium, and structure meta groups using EVE's native item tags
+- inspect published dogma attributes with readable values and EVE icons
+- view fitting requirements including CPU, powergrid, rig size, calibration, slot type, and hardpoint requirements
+- view recursive skill requirements and required skill levels
+- browse compatible charge types for items that expose charge-group data
+- browse item variations grouped by meta classification
+- view manufacturing blueprints and reprocessing materials
 - local lookups through the imported SDE database
 
 ### Universe
@@ -88,7 +94,9 @@ Navigation uses the static stargate network from the SDE. Dynamic wormhole conne
 - check the installed SDE build
 - download newer SDE builds from CCP
 - extract only the data ETU currently needs
-- import static data into a local SQLite database
+- import inventory, universe, dogma, material, and blueprint data into SQLite
+- track ETU's local SDE schema independently from the CCP SDE build
+- detect when an existing database requires a structural refresh
 - keep SDE download and extraction files temporary during updates
 
 ## Requirements
@@ -187,10 +195,15 @@ etu-main/
 │       │   ├── __init__.py         # package marker for etu's graphical interface
 │       │   ├── __main__.py         # entry point for python -m etu.gui
 │       │   ├── app.py              # creates and configures qapplication
+│       │   ├── dogma.py            # dogma formatting and icon presentation
+│       │   ├── meta.py             # meta-group tags and list delegate
 │       │   ├── search.py           # takes fuzzy search from the cli functions
 │       │   ├── theme.py            # gui palette, spacing, etc
 │       │   ├── widgets.py          # contains the responsive parts of the application
 │       │   ├── window.py           # main desktop shell
+│       │   ├── assets/
+│       │   │   ├── dogma/          # EVE dogma attribute/effect icons
+│       │   │   └── meta/           # EVE item meta-group tags
 │       │   └── pages/
 │       │       ├── __init__.py     # package marker for the GUI page modules
 │       │       ├── base.py         # provides the standard page layout and shared task handling
@@ -232,6 +245,8 @@ etu-main/
 `etu.db` is the generated SQLite database containing the imported static data and ETU metadata.
 
 SDE archives and extracted JSONL files are handled in temporary directories during updates rather than being kept permanently in the repository.
+
+ETU also tracks its own SDE schema version. After an ETU update adds new static-data requirements, Settings may report `REFRESH REQUIRED` even when the installed CCP SDE build is already current. Refreshing the SDE rebuilds the local database with the additional data.
 
 ## Architecture
 
@@ -282,13 +297,26 @@ Some of the larger areas planned for ETU include:
 - improved caching and persistence
 - expanded market analysis
 
-## License
+## License and Third-Party Assets
 
-ETU is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
+ETU's original source code is licensed under the Apache License 2.0.
+See [LICENSE](LICENSE) for details.
 
-EVE Online and related names and assets belong to CCP Games. ETU is an unofficial community project and is not affiliated with or endorsed by CCP Games.
+Files under `src/etu/gui/assets/` include artwork and interface assets
+from EVE Online that are owned by CCP hf. These assets are not licensed
+under the Apache License 2.0 and remain the property of CCP hf. They are
+included solely for use with this EVE Online third-party application and
+are subject to CCP's applicable developer and content terms.
 
-Font is from Google Fonts, Jura
+© 2014 CCP hf. All rights reserved. "EVE", "EVE Online", "CCP", and all
+related logos and images are trademarks or registered trademarks of CCP hf.
+
+This material is used with limited permission of CCP Games.
+No official affiliation or endorsement by CCP Games is stated or implied.
+
+ETU is an independent, unofficial third-party application.
+
+The Jura typeface is distributed separately under its applicable font license.
 
 ## Extras
 
