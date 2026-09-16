@@ -27,7 +27,7 @@ def launch_gui():
 def main():
     while True:
         print()
-        print("ETU dev-0.1.4")
+        print("ETU dev-0.1.5")
         print()
         print("[1] Inventory")
         print("[2] Universe")

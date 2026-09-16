@@ -8,7 +8,10 @@ from pathlib import Path
 
 import requests
 
-from etu.sde.database import get_sde_build
+from etu.sde.database import (
+    get_sde_build,
+    needs_sde_refresh,
+)
 from etu.sde.importer import import_sde
 
 
@@ -27,6 +30,12 @@ REQUIRED_SDE_FILES = {
     "categories.jsonl",
     "groups.jsonl",
     "types.jsonl",
+    "dogmaUnits.jsonl",
+    "dogmaAttributes.jsonl",
+    "dogmaEffects.jsonl",
+    "typeDogma.jsonl",
+    "typeMaterials.jsonl",
+    "blueprints.jsonl",
     "mapRegions.jsonl",
     "mapConstellations.jsonl",
     "mapSolarSystems.jsonl",
@@ -113,9 +122,23 @@ def update_sde():
     )
     print(f"Latest SDE:    {latest_build}")
 
-    if installed_build == latest_build:
+    refresh_required = needs_sde_refresh()
+
+    if (
+        installed_build == latest_build
+        and not refresh_required
+    ):
         print("SDE is already up to date.")
         return
+
+    if (
+        installed_build == latest_build
+        and refresh_required
+    ):
+        print(
+            "SDE data needs a refresh for "
+            "the current ETU schema."
+        )
 
     # downloads stay temporary so a failed update does not leave random archives around the project
     with tempfile.TemporaryDirectory(

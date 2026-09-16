@@ -187,6 +187,14 @@ def stylesheet() -> str:
         font-weight: 600;
     }}
 
+    QLabel#DogmaGroupHeader {{
+        background: {c["panel_raised"]};
+        color: {c["text_bright"]};
+        padding: 0 8px;
+        font-size: {t["small"]}pt;
+        font-weight: 600;
+    }}
+
     QLabel#Value {{
         color: {c["text_bright"]};
     }}

@@ -8,6 +8,7 @@ from pathlib import Path
 from etu.sde.database import (
     SDE_DIR,
     _set_sde_build,
+    _set_sde_schema_version,
     connect,
     create_database,
 )
@@ -20,7 +21,21 @@ def import_sde(
     create_database()
 
     with connect() as db:
-        # foreign keys are enabled, so child tables are cleared before the tables they depend on
+        # ccp's sde is not guaranteed to be relationally closed; some exported
+        # records can reference ids that are absent from another exported file
+        # keep the declared relationships for normal etu access, but do not let
+        # sqlite reject otherwise valid source rows while mirroring the sde
+        db.execute("PRAGMA foreign_keys = OFF")
+
+        # child tables are still cleared first so the dependency order stays explicit
+        db.execute("DELETE FROM type_dogma_attributes")
+        db.execute("DELETE FROM type_dogma_effects")
+        db.execute("DELETE FROM type_materials")
+        db.execute("DELETE FROM blueprint_products")
+        db.execute("DELETE FROM dogma_attributes")
+        db.execute("DELETE FROM dogma_effects")
+        db.execute("DELETE FROM dogma_units")
+
         db.execute("DELETE FROM stargates")
         db.execute("DELETE FROM systems")
         db.execute("DELETE FROM constellations")
@@ -39,6 +54,24 @@ def import_sde(
         print("Importing types...")
         _import_types(db, sde_dir)
 
+        print("Importing dogma units...")
+        _import_dogma_units(db, sde_dir)
+
+        print("Importing dogma attributes...")
+        _import_dogma_attributes(db, sde_dir)
+
+        print("Importing dogma effects...")
+        _import_dogma_effects(db, sde_dir)
+
+        print("Importing type dogma...")
+        _import_type_dogma(db, sde_dir)
+
+        print("Importing type materials...")
+        _import_type_materials(db, sde_dir)
+
+        print("Importing blueprint products...")
+        _import_blueprint_products(db, sde_dir)
+
         print("Importing regions...")
         _import_regions(db, sde_dir)
 
@@ -54,7 +87,10 @@ def import_sde(
         if build is not None:
             _set_sde_build(db, build)
 
+        _set_sde_schema_version(db)
+
     print("SDE import complete.")
+
 
 def _require_sde_file(
     filename: str,
@@ -70,12 +106,13 @@ def _require_sde_file(
 
     return path
 
+
 def _read_jsonl(path: Path) -> Iterator[dict]:
     """
     stream a json lines file one record at a time
     """
 
-    # types.jsonl is large enough that loading the whole thing at once would just waste memory
+    # large sde files are streamed rather than loaded into memory all at once
     with open(path, encoding="utf-8") as file:
         for line in file:
             line = line.strip()
@@ -84,6 +121,14 @@ def _read_jsonl(path: Path) -> Iterator[dict]:
                 continue
 
             yield json.loads(line)
+
+
+def _english(value):
+    if not isinstance(value, dict):
+        return None
+
+    return value.get("en")
+
 
 def _import_categories(
     db: sqlite3.Connection,
@@ -111,6 +156,7 @@ def _import_categories(
         )
         VALUES (?, ?, ?)
     """, rows)
+
 
 def _import_groups(
     db: sqlite3.Connection,
@@ -141,6 +187,7 @@ def _import_groups(
         VALUES (?, ?, ?, ?)
     """, rows)
 
+
 def _import_types(
     db: sqlite3.Connection,
     sde_dir: Path = SDE_DIR,
@@ -152,13 +199,17 @@ def _import_types(
 
     def rows():
         for data in _read_jsonl(path):
-            description = (data.get("description") or {}).get("en")
+            description = _english(
+                data.get("description")
+            )
 
             yield (
                 data["_key"],
                 data["name"]["en"],
                 description,
                 data["groupID"],
+                data.get("metaGroupID"),
+                data.get("variationParentTypeID"),
                 data.get("volume"),
                 data.get("packagedVolume"),
                 int(data.get("published", False)),
@@ -170,12 +221,247 @@ def _import_types(
             name,
             description,
             group_id,
+            meta_group_id,
+            variation_parent_type_id,
             volume,
             packaged_volume,
             published
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, rows())
+
+
+def _import_dogma_units(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "dogmaUnits.jsonl",
+        sde_dir,
+    )
+
+    rows = (
+        (
+            data["_key"],
+            data["name"],
+            _english(data.get("displayName")),
+        )
+        for data in _read_jsonl(path)
+    )
+
+    db.executemany("""
+        INSERT INTO dogma_units (
+            unit_id,
+            name,
+            display_name
+        )
+        VALUES (?, ?, ?)
+    """, rows)
+
+
+def _import_dogma_attributes(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "dogmaAttributes.jsonl",
+        sde_dir,
+    )
+
+    rows = (
+        (
+            data["_key"],
+            data["name"],
+            _english(data.get("displayName")),
+            data.get("iconID"),
+            data.get("unitID"),
+            int(data.get("published", False)),
+            int(data.get("displayWhenZero", False)),
+            data["dataType"],
+        )
+        for data in _read_jsonl(path)
+    )
+
+    db.executemany("""
+        INSERT INTO dogma_attributes (
+            attribute_id,
+            name,
+            display_name,
+            icon_id,
+            unit_id,
+            published,
+            display_when_zero,
+            data_type
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, rows)
+
+
+def _import_dogma_effects(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "dogmaEffects.jsonl",
+        sde_dir,
+    )
+
+    rows = (
+        (
+            data["_key"],
+            data["name"],
+            _english(data.get("displayName")),
+            data.get("iconID"),
+            int(data.get("published", False)),
+        )
+        for data in _read_jsonl(path)
+    )
+
+    db.executemany("""
+        INSERT INTO dogma_effects (
+            effect_id,
+            name,
+            display_name,
+            icon_id,
+            published
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, rows)
+
+
+def _import_type_dogma(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "typeDogma.jsonl",
+        sde_dir,
+    )
+
+    def attribute_rows():
+        for data in _read_jsonl(path):
+            type_id = data["_key"]
+
+            for index, attribute in enumerate(
+                data.get("dogmaAttributes", ())
+            ):
+                yield (
+                    type_id,
+                    attribute["attributeID"],
+                    attribute["value"],
+                    index,
+                )
+
+    db.executemany("""
+        INSERT INTO type_dogma_attributes (
+            type_id,
+            attribute_id,
+            value,
+            sort_index
+        )
+        VALUES (?, ?, ?, ?)
+    """, attribute_rows())
+
+    def effect_rows():
+        for data in _read_jsonl(path):
+            type_id = data["_key"]
+
+            for index, effect in enumerate(
+                data.get("dogmaEffects", ())
+            ):
+                yield (
+                    type_id,
+                    effect["effectID"],
+                    int(effect.get("isDefault", False)),
+                    index,
+                )
+
+    db.executemany("""
+        INSERT INTO type_dogma_effects (
+            type_id,
+            effect_id,
+            is_default,
+            sort_index
+        )
+        VALUES (?, ?, ?, ?)
+    """, effect_rows())
+
+
+def _import_type_materials(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "typeMaterials.jsonl",
+        sde_dir,
+    )
+
+    def rows():
+        for data in _read_jsonl(path):
+            type_id = data["_key"]
+
+            for material in data.get(
+                "materials",
+                (),
+            ):
+                yield (
+                    type_id,
+                    material["materialTypeID"],
+                    material["quantity"],
+                )
+
+    db.executemany("""
+        INSERT INTO type_materials (
+            type_id,
+            material_type_id,
+            quantity
+        )
+        VALUES (?, ?, ?)
+    """, rows())
+
+
+def _import_blueprint_products(
+    db: sqlite3.Connection,
+    sde_dir: Path = SDE_DIR,
+):
+    path = _require_sde_file(
+        "blueprints.jsonl",
+        sde_dir,
+    )
+
+    def rows():
+        for data in _read_jsonl(path):
+            blueprint_type_id = data.get(
+                "blueprintTypeID",
+                data["_key"],
+            )
+            manufacturing = (
+                data.get("activities", {})
+                .get("manufacturing")
+            )
+
+            if not manufacturing:
+                continue
+
+            for product in manufacturing.get(
+                "products",
+                (),
+            ):
+                yield (
+                    blueprint_type_id,
+                    product["typeID"],
+                    product.get("quantity", 1),
+                )
+
+    db.executemany("""
+        INSERT INTO blueprint_products (
+            blueprint_type_id,
+            product_type_id,
+            quantity
+        )
+        VALUES (?, ?, ?)
+    """, rows())
+
 
 def _import_regions(
     db: sqlite3.Connection,
@@ -205,6 +491,7 @@ def _import_regions(
         )
         VALUES (?, ?, ?, ?)
     """, rows)
+
 
 def _import_constellations(
     db: sqlite3.Connection,
@@ -236,6 +523,7 @@ def _import_constellations(
         )
         VALUES (?, ?, ?, ?, ?)
     """, rows)
+
 
 def _import_systems(
     db: sqlite3.Connection,
@@ -273,6 +561,7 @@ def _import_systems(
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, rows)
+
 
 def _import_stargates(
     db: sqlite3.Connection,

@@ -55,6 +55,7 @@ def get_type(type_id: int) -> dict | None:
                 types.type_id,
                 types.name,
                 types.description,
+                types.meta_group_id,
                 types.volume,
                 types.packaged_volume,
                 types.published,
@@ -95,6 +96,7 @@ def find_types(name: str, limit: int = 25) -> list[dict]:
             SELECT
                 types.type_id,
                 types.name,
+                types.meta_group_id,
 
                 groups.group_id,
                 groups.name AS group_name,
@@ -138,6 +140,7 @@ def find_types_fuzzy(
             SELECT
                 types.type_id,
                 types.name,
+                types.meta_group_id,
 
                 groups.group_id,
                 groups.name AS group_name,

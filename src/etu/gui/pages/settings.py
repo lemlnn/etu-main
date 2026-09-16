@@ -90,11 +90,27 @@ class SettingsPage(BasePage):
             else None
         )
 
-        self.status_row.set_value(
-            "READY"
-            if ready
-            else "NOT READY"
+        refresh_required = (
+            ready
+            and sde.needs_sde_refresh()
         )
+
+        self.status_row.set_value(
+            "REFRESH REQUIRED"
+            if refresh_required
+            else (
+                "READY"
+                if ready
+                else "NOT READY"
+            )
+        )
+
+        if refresh_required:
+            self._update_ready = True
+            self.update_button.setText(
+                "REFRESH SDE"
+            )
+
         self.build_row.set_value(
             build or "UNKNOWN"
         )
@@ -122,8 +138,14 @@ class SettingsPage(BasePage):
         def result(latest_build):
             self._latest_build = latest_build
             installed = sde.get_sde_build()
+            refresh_required = (
+                sde.needs_sde_refresh()
+            )
 
-            if installed == latest_build:
+            if (
+                installed == latest_build
+                and not refresh_required
+            ):
                 self._update_ready = False
                 self.update_button.setText(
                     "CHECK FOR SDE UPDATE"
@@ -135,6 +157,20 @@ class SettingsPage(BasePage):
                 return
 
             self._update_ready = True
+
+            if (
+                installed == latest_build
+                and refresh_required
+            ):
+                self.update_button.setText(
+                    "REFRESH SDE"
+                )
+                self.update_status.set_status(
+                    "Local SDE refresh required · "
+                    f"build {latest_build}",
+                    "warning",
+                )
+                return
             self.update_button.setText(
                 "UPDATE SDE"
             )

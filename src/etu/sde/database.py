@@ -10,6 +10,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 SDE_DIR = DATA_DIR / "sde"
 DB_PATH = DATA_DIR / "etu.db"
 
+SDE_SCHEMA_VERSION = 3
+
 
 def connect() -> sqlite3.Connection:
     """
@@ -25,6 +27,22 @@ def connect() -> sqlite3.Connection:
     db.execute("PRAGMA foreign_keys = ON")
 
     return db
+
+
+def _column_exists(
+    db: sqlite3.Connection,
+    table: str,
+    column: str,
+) -> bool:
+    rows = db.execute(
+        f"PRAGMA table_info({table})"
+    ).fetchall()
+
+    return any(
+        row["name"] == column
+        for row in rows
+    )
+
 
 def create_database():
     """
@@ -58,6 +76,8 @@ def create_database():
                 name TEXT NOT NULL,
                 description TEXT,
                 group_id INTEGER NOT NULL,
+                meta_group_id INTEGER,
+                variation_parent_type_id INTEGER,
                 volume REAL,
                 packaged_volume REAL,
                 published INTEGER NOT NULL,
@@ -67,9 +87,163 @@ def create_database():
             )
         """)
 
+        # older etu databases are upgraded in place, then refreshed from the current sde
+        if not _column_exists(
+            db,
+            "types",
+            "meta_group_id",
+        ):
+            db.execute("""
+                ALTER TABLE types
+                ADD COLUMN meta_group_id INTEGER
+            """)
+
+        if not _column_exists(
+            db,
+            "types",
+            "variation_parent_type_id",
+        ):
+            db.execute("""
+                ALTER TABLE types
+                ADD COLUMN variation_parent_type_id INTEGER
+            """)
+
         db.execute("""
             CREATE INDEX IF NOT EXISTS idx_types_name
             ON types(name)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_types_variation_parent
+            ON types(variation_parent_type_id)
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS dogma_units (
+                unit_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                display_name TEXT
+            )
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS dogma_attributes (
+                attribute_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                display_name TEXT,
+                icon_id INTEGER,
+                unit_id INTEGER,
+                published INTEGER NOT NULL,
+                display_when_zero INTEGER NOT NULL,
+                data_type INTEGER NOT NULL,
+
+                FOREIGN KEY (unit_id)
+                    REFERENCES dogma_units(unit_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS dogma_effects (
+                effect_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                display_name TEXT,
+                icon_id INTEGER,
+                published INTEGER NOT NULL
+            )
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS type_dogma_attributes (
+                type_id INTEGER NOT NULL,
+                attribute_id INTEGER NOT NULL,
+                value REAL NOT NULL,
+                sort_index INTEGER NOT NULL,
+
+                PRIMARY KEY (type_id, attribute_id),
+
+                FOREIGN KEY (type_id)
+                    REFERENCES types(type_id),
+
+                FOREIGN KEY (attribute_id)
+                    REFERENCES dogma_attributes(attribute_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_type_dogma_attributes_type
+            ON type_dogma_attributes(type_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_type_dogma_attributes_attribute
+            ON type_dogma_attributes(attribute_id)
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS type_dogma_effects (
+                type_id INTEGER NOT NULL,
+                effect_id INTEGER NOT NULL,
+                is_default INTEGER NOT NULL,
+                sort_index INTEGER NOT NULL,
+
+                PRIMARY KEY (type_id, effect_id),
+
+                FOREIGN KEY (type_id)
+                    REFERENCES types(type_id),
+
+                FOREIGN KEY (effect_id)
+                    REFERENCES dogma_effects(effect_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_type_dogma_effects_type
+            ON type_dogma_effects(type_id)
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS type_materials (
+                type_id INTEGER NOT NULL,
+                material_type_id INTEGER NOT NULL,
+                quantity INTEGER NOT NULL,
+
+                PRIMARY KEY (type_id, material_type_id),
+
+                FOREIGN KEY (type_id)
+                    REFERENCES types(type_id),
+
+                FOREIGN KEY (material_type_id)
+                    REFERENCES types(type_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_type_materials_type
+            ON type_materials(type_id)
+        """)
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS blueprint_products (
+                blueprint_type_id INTEGER NOT NULL,
+                product_type_id INTEGER NOT NULL,
+                quantity INTEGER NOT NULL,
+
+                PRIMARY KEY (
+                    blueprint_type_id,
+                    product_type_id
+                ),
+
+                FOREIGN KEY (blueprint_type_id)
+                    REFERENCES types(type_id),
+
+                FOREIGN KEY (product_type_id)
+                    REFERENCES types(type_id)
+            )
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blueprint_products_product
+            ON blueprint_products(product_type_id)
         """)
 
         db.execute("""
@@ -136,10 +310,11 @@ def create_database():
         # the installed sde build is stored here so the updater knows whether it actually needs to download anything
         db.execute("""
             CREATE TABLE IF NOT EXISTS metadata (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
         """)
+
 
 def get_sde_build() -> int | None:
     create_database()
@@ -156,6 +331,7 @@ def get_sde_build() -> int | None:
 
     return int(result["value"])
 
+
 def _set_sde_build(
     db: sqlite3.Connection,
     build: int,
@@ -167,6 +343,41 @@ def _set_sde_build(
         DO UPDATE SET value = excluded.value
     """, (str(build),))
 
+
+def get_sde_schema_version() -> int | None:
+    create_database()
+
+    with connect() as db:
+        result = db.execute("""
+            SELECT value
+            FROM metadata
+            WHERE key = 'sde_schema_version'
+        """).fetchone()
+
+    if result is None:
+        return None
+
+    return int(result["value"])
+
+
+def _set_sde_schema_version(
+    db: sqlite3.Connection,
+):
+    db.execute("""
+        INSERT INTO metadata (key, value)
+        VALUES ('sde_schema_version', ?)
+        ON CONFLICT(key)
+        DO UPDATE SET value = excluded.value
+    """, (str(SDE_SCHEMA_VERSION),))
+
+
+def needs_sde_refresh() -> bool:
+    return (
+        get_sde_schema_version()
+        != SDE_SCHEMA_VERSION
+    )
+
+
 def is_ready() -> bool:
     """
     return true if the local sde database exists and contains
@@ -177,6 +388,8 @@ def is_ready() -> bool:
         return False
 
     try:
+        create_database()
+
         with connect() as db:
             types = db.execute(
                 "SELECT COUNT(*) FROM types"
