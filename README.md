@@ -6,6 +6,38 @@ The project currently focuses on fast local lookups, market tools, universe data
 
 > ETU is still in active development. Features, commands, file layout, and behavior may change between development versions.
 
+## Interfaces
+
+### Desktop GUI
+
+ETU now includes a functional Qt desktop interface with pages for:
+
+- Inventory
+- Universe
+- Market
+- Navigation
+- Settings / SDE maintenance
+
+The GUI is built with **PySide6 / Qt 6 Widgets** and uses a Photon-inspired interface
+
+Launch it directly with:
+
+```bash
+python -m etu.gui
+```
+
+Or launch ETU normally and choose:
+
+```text
+[G] Launch GUI
+```
+
+### Terminal Interface
+
+The original CLI remains available and uses the same ETU service and data modules.
+
+Some advanced navigation controls, including ordered waypoints and avoided systems, are currently exposed through the CLI while the GUI continues to be worked on.
+
 ## Current Features
 
 ### Inventory
@@ -64,6 +96,7 @@ Navigation uses the static stargate network from the SDE. Dynamic wormhole conne
 - Python 3.11 or newer
 - `requests`
 - `rapidfuzz`
+- `PySide6`
 
 The Python dependencies are installed automatically through `pyproject.toml`.
 
@@ -122,12 +155,13 @@ ETU dev-...
 [3] Market
 [4] Navigation
 [5] Data
+[G] Launch GUI
 [Q] Quit
 ```
 
 ## Project Layout
 
-The tracked source layout is:
+The current tracked source layout is:
 
 ```text
 etu-main/
@@ -148,6 +182,23 @@ etu-main/
 │       │   ├── search.py           # shared search ranking helpers
 │       │   ├── systems.py          # solar-system search and selection ui
 │       │   └── universe.py         # universe submenu
+│       │
+│       ├── gui/
+│       │   ├── __init__.py         # package marker for etu's graphical interface
+│       │   ├── __main__.py         # entry point for python -m etu.gui
+│       │   ├── app.py              # creates and configures qapplication
+│       │   ├── search.py           # takes fuzzy search from the cli functions
+│       │   ├── theme.py            # gui palette, spacing, etc
+│       │   ├── widgets.py          # contains the responsive parts of the application
+│       │   ├── window.py           # main desktop shell
+│       │   └── pages/
+│       │       ├── __init__.py     # package marker for the GUI page modules
+│       │       ├── base.py         # provides the standard page layout and shared task handling
+│       │       ├── inventory.py    # renders inventory tab, functionality pulled from cli
+│       │       ├── market.py       # renders market tab, functionality pulled from cli
+│       │       ├── navigation.py   # renders nav tab, functionality pulled from cli
+│       │       ├── settings.py     # renders settings, functionality pulled from cli
+│       │       └── universe.py     # renders universe tab, functionality pulled from cli
 │       │
 │       ├── sde/                    # static-data database layer
 │       │   ├── __init__.py         # public sde interface
@@ -230,10 +281,16 @@ Some of the larger areas planned for ETU include:
 - wallet, industry, contracts, fittings, and other private ESI data
 - improved caching and persistence
 - expanded market analysis
-- a graphical interface built on top of the same backend modules
 
 ## License
 
 ETU is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 EVE Online and related names and assets belong to CCP Games. ETU is an unofficial community project and is not affiliated with or endorsed by CCP Games.
+
+Font is from Google Fonts, Jura
+
+## Extras
+
+- READMEs are really annoying to make
+- Good GUI is so damn hard

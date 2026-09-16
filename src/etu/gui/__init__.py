@@ -1,0 +1,1 @@
+"""graphical interface for etu"""
