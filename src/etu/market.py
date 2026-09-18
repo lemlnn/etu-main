@@ -5,6 +5,20 @@ import requests
 from etu import esi
 from etu.universe import get_jump_distances
 
+
+PLEX_TYPE_ID = 44_992
+GLOBAL_PLEX_REGION_ID = 19_000_001
+GLOBAL_MARKET_NAME = "GLOBAL"
+
+
+def is_global_market_type(type_id):
+    """Return whether an item belongs to EVE's special global market."""
+    try:
+        return int(type_id) == PLEX_TYPE_ID
+    except (TypeError, ValueError):
+        return False
+
+
 def get_orders(region_id, type_id, system_id=None):
     response = esi.get_pages(
         f"/markets/{region_id}/orders",

@@ -1,8 +1,8 @@
 # ETU - EVE Tracking Utility
 
-ETU is an in-development helper utility for **EVE Online** built around CCP's ESI API and the EVE Static Data Export (SDE).
+ETU is an in-development companion utility for **EVE Online** built around CCP's ESI API and the EVE Static Data Export (SDE).
 
-The project currently focuses on fast local lookups, market tools, universe data, and route planning from a terminal interface. The long-term goal is to grow ETU into a broader EVE companion application while keeping the underlying data and feature layers reusable outside the CLI.
+The project provides both a Qt desktop GUI and terminal interface over shared data and service layers. It currently focuses on fast local SDE lookups, dogma inspection, public market tools, universe data, and static route planning while keeping the underlying feature code reusable across interfaces.
 
 > ETU is still in active development. Features, commands, file layout, and behavior may change between development versions.
 
@@ -18,7 +18,7 @@ ETU now includes a functional Qt desktop interface with pages for:
 - Navigation
 - Settings / SDE maintenance
 
-The GUI is built with **PySide6 / Qt 6 Widgets** and uses a Photon-inspired interface
+The GUI is built with **PySide6 / Qt 6 Widgets** and uses a Photon-inspired interface.
 
 Launch it directly with:
 
@@ -42,14 +42,19 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 
 ### Inventory
 
-- search inventory types by ID or name
-- deterministic keyword matching for item names, with live GUI results and match counts
+- search inventory types by ID or name with debounced live results and match counts
+- use deterministic keyword matching backed by reusable in-memory trie indexes
+- filter results by player-facing SDE item category
+- configure published-only filtering, result limits, or show-all results from Settings
 - view type, group, category, volume, publication state, and descriptions
 - identify Tech II, Tech III, faction, deadspace, officer, storyline, abyssal, limited-time, premium, and structure meta groups using EVE's native item tags
 - inspect published dogma attributes with readable values and EVE icons
+- resolve dogma booleans, type/group references, rig sizes, training attributes, time values, d-scan range, and other special units into readable values
+- calculate displayed ship warp speed from the ship's base speed, multiplier, and applicable role bonus
 - view fitting requirements including CPU, powergrid, rig size, calibration, slot type, and hardpoint requirements
+- collapse long ship fitting-restriction lists into ship-class and ship-type groups
 - view recursive skill requirements and required skill levels
-- browse compatible charge types for items that expose charge-group data
+- browse compatible charges from modules and reverse "used with" relationships from ammo, crystals, scripts, probes, paste, and other charge-category items
 - browse item variations grouped by meta classification
 - view manufacturing blueprints and reprocessing materials
 - local lookups through the imported SDE database
@@ -57,27 +62,33 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 ### Universe
 
 - search solar systems by ID or name
-- deterministic keyword and prefix-friendly system search, including J-space names
+- deterministic keyword and substring-friendly system search, including J-space names
+- reuse in-memory trie indexes for fast system and region lookups
 - view security status, constellation, and region information
 - view static stargate connections
 - search regions by ID or name
 
 ### Market
 
-- inline keyword suggestions for item and system/region searches
+- inline debounced keyword suggestions for item and system/region searches
+- filter item searches with the same player-facing SDE category list used by Inventory
 - retrieve paginated regional market orders through ESI
 - view market orders by region or filter them to a selected system
-- sort sell orders from lowest to highest price
-- sort buy orders from highest to lowest price
-- view best buy and best sell prices
+- use CCP's global PLEX market automatically when PLEX is selected; GLOBAL scope is hidden for normal items
+- display sell and buy orders simultaneously in separate, vertically resizable panes
+- sort sell orders from lowest to highest price and buy orders from highest to lowest price
+- use model-backed order tables so very large order books do not create thousands of individual table widgets
 - resolve public NPC station IDs to readable station names
 - identify unresolved player-owned structures until authenticated structure lookup is added
-- find buy orders that can reach a selected system based on order range and stargate distance
-- view regional market history and recent market statistics
+- find buy orders that can reach a selected system based on order range and static stargate distance
+- hide Reachable Buy Orders unless a loaded SYSTEM-scope query can use it
+- view market history as either a table or interactive graph
+- graph daily average price, low/high price range, and traded volume with exact hover details
+- cache static graph rendering and reduce repaint work during hover and window resizing
 
 ### Navigation
 
-- inline keyword suggestions for origin and destination systems
+- inline debounced keyword suggestions for origin and destination systems
 - plan routes through the static stargate network
 - shortest-route planning
 - safer routing
@@ -90,6 +101,13 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 - keyword system lookup for origins, destinations, waypoints, and avoided systems
 
 Navigation uses the static stargate network from the SDE. Dynamic wormhole connections are not included.
+
+### Settings
+
+- manage the local SDE database and refresh state
+- configure Inventory to show published items only or include unpublished/internal SDE entries
+- choose between showing all Inventory search matches or limiting the displayed result count
+- keep GUI search preferences persistent through Qt settings
 
 ### Data
 
@@ -197,7 +215,8 @@ etu-main/
 │       │   ├── app.py              # creates and configures qapplication
 │       │   ├── dogma.py            # dogma formatting and icon presentation
 │       │   ├── meta.py             # meta-group tags and list delegate
-│       │   ├── search.py           # keyword lookup and live suggestion helpers
+│       │   ├── preferences.py      # persistent GUI preference keys and defaults
+│       │   ├── search.py           # keyword lookup, category filters, and live suggestions
 │       │   ├── theme.py            # gui palette, spacing, etc
 │       │   ├── widgets.py          # contains the responsive parts of the application
 │       │   ├── window.py           # main desktop shell
@@ -216,14 +235,17 @@ etu-main/
 │       ├── sde/                    # static-data database layer
 │       │   ├── __init__.py         # public sde interface
 │       │   ├── database.py         # sqlite paths, schema, and metadata
+│       │   ├── dogma.py            # dogma, materials, blueprints, and compatibility queries
 │       │   ├── importer.py         # jsonl import logic
-│       │   ├── inventory.py        # inventory queries and keyword search
+│       │   ├── inventory.py        # inventory queries and category metadata
+│       │   ├── search.py           # reusable trie-backed SDE keyword indexes
 │       │   ├── universe.py         # universe queries, stargates, and routing
 │       │   └── updater.py          # sde download and update logic
 │       │
 │       ├── esi.py                  # public esi request and pagination helpers
 │       ├── inventory.py            # inventory service layer
 │       ├── market.py               # market data and market-range logic
+│       ├── search.py               # shared keyword matching helpers
 │       └── universe.py             # universe and navigation service layer
 │
 ├── .gitignore
@@ -268,9 +290,11 @@ esi.py
 market and other live-data features
 ```
 
-Static or slow-changing data is kept locally so common searches do not require repeated network requests. Live information, such as market orders and history, is retrieved through ESI.
+Static or slow-changing data is kept locally so common searches do not require repeated network requests. Name searches build reusable in-memory trie indexes from the local SDE and invalidate them when the database changes. GUI live searches are debounced so typing does not repeatedly trigger broad database work.
 
-The CLI is kept separate from the underlying feature modules so the same backend logic can later be reused by other interfaces.
+Live information, such as market orders and history, is retrieved through ESI. Large market order books use model-backed Qt tables, while the history graph caches its static rendering so scrolling, hovering, and window resizing do not unnecessarily rebuild thousands of visual elements.
+
+The CLI is kept separate from the underlying feature modules so the same backend logic can be reused by the desktop interface.
 
 ## Current Limitations
 
@@ -282,6 +306,7 @@ Because of that:
 - authenticated character and corporation data is not available yet
 - structure-specific authenticated market data is not available
 - navigation only knows static stargates and cannot track live wormhole connections
+- ESI only provides ETU's GLOBAL market scope for PLEX; normal items remain system/region scoped rather than being synthesized into an ETU-wide global order book
 
 These are planned areas for later development.
 
@@ -295,7 +320,7 @@ Some of the larger areas planned for ETU include:
 - skill and skill-queue tracking
 - wallet, industry, contracts, fittings, and other private ESI data
 - improved caching and persistence
-- expanded market analysis
+- expanded market analysis and longer-term market tooling
 
 ## License and Third-Party Assets
 

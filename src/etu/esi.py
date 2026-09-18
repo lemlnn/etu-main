@@ -6,7 +6,7 @@ BASE_URL = "https://esi.evetech.net"
 
 HEADERS = {
     "X-Compatibility-Date": "2026-09-10",
-    "User-Agent": "ETU/dev-0.1.6"
+    "User-Agent": "ETU/dev-0.1.7"
 }
 
 def get(path: str, params: dict | None = None) -> dict | list:

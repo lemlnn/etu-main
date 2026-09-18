@@ -7,6 +7,8 @@ from etu.cli.inventory import resolve_type
 from etu.cli.systems import resolve_system
 from etu.cli.regions import resolve_region
 from etu.market import (
+    GLOBAL_MARKET_NAME,
+    GLOBAL_PLEX_REGION_ID,
     get_orders,
     get_best_buy,
     get_best_sell,
@@ -14,6 +16,7 @@ from etu.market import (
     get_location_names,
     get_history,
     get_history_stats,
+    is_global_market_type,
 )
 from etu.universe import get_system
 
@@ -59,9 +62,9 @@ def format_order_range(order):
     jumps = int(order_range)
 
     if jumps == 1:
-        return "1 jump"
+        return "1 Jump"
 
-    return f"{jumps} jumps"
+    return f"{jumps} Jumps"
 
 def print_reachable_buy_orders(orders, location_names):
     print("Buy Orders")
@@ -79,19 +82,19 @@ def print_reachable_buy_orders(orders, location_names):
         order_range = order["range"]
 
         if order_range == "station":
-            distance_text = "location required"
+            distance_text = "Exact Station"
 
         elif distance == 0:
-            distance_text = "same system"
+            distance_text = "Same System"
 
         elif distance == 1:
-            distance_text = "1 jump away"
+            distance_text = "1 Jump Away"
 
         elif distance is not None:
-            distance_text = f"{distance} jumps away"
+            distance_text = f"{distance} Jumps Away"
 
         else:
-            distance_text = "distance unknown"
+            distance_text = "Distance Unknown"
 
         print(
             f"{order['price']:,.2f} ISK - "
@@ -114,6 +117,10 @@ def search_reachable_buy_orders():
     item = resolve_type()
 
     if item is None:
+        return
+
+    if is_global_market_type(item["type_id"]):
+        print("Reachable buy orders are not applicable to the global PLEX market.")
         return
 
     system_match = resolve_system()
@@ -284,10 +291,16 @@ def search_market_history():
     if item is None:
         return
 
-    region = resolve_region()
+    if is_global_market_type(item["type_id"]):
+        region = {
+            "region_id": GLOBAL_PLEX_REGION_ID,
+            "name": GLOBAL_MARKET_NAME,
+        }
+    else:
+        region = resolve_region()
 
-    if region is None:
-        return
+        if region is None:
+            return
 
     history = get_history(
         region["region_id"],
@@ -358,12 +371,23 @@ def get_market_selection():
     if item is None:
         return None
 
+    if is_global_market_type(item["type_id"]):
+        return {
+            "type_id": item["type_id"],
+            "item_name": item["name"],
+            "system_id": None,
+            "system_name": None,
+            "region_id": GLOBAL_PLEX_REGION_ID,
+            "region_name": GLOBAL_MARKET_NAME,
+        }
+
     while True:
         print()
         print("Market Scope")
         print()
         print("[1] System")
         print("[2] Region")
+        print("[3] Global")
         print("[B] Back")
 
         choice = input("> ").strip().lower()
@@ -400,6 +424,9 @@ def get_market_selection():
                 "region_id": region["region_id"],
                 "region_name": region["name"],
             }
+
+        elif choice == "3":
+            print("Global market is only available for PLEX.")
 
         elif choice == "b":
             return None

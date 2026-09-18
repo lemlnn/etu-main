@@ -43,9 +43,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle(
-            "ETU — EVE Tracking Utility"
-        )
+        self.setWindowTitle("ETU")
         self.resize(
             UNIT * 180,
             UNIT * 108,

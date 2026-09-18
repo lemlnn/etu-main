@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSplitter,
+    QTableView,
     QTableWidget,
     QVBoxLayout,
     QWidget,
@@ -194,6 +195,12 @@ def panel_splitter(
             "splitEdge",
             edge,
         )
+        panel.setProperty(
+            "splitAxis",
+            "horizontal"
+            if orientation == Qt.Orientation.Horizontal
+            else "vertical",
+        )
         splitter.addWidget(panel)
 
     if sizes:
@@ -202,27 +209,19 @@ def panel_splitter(
     return splitter
 
 
-class WeightedTableWidget(QTableWidget):
-    """responsive table with user-resizable columns that keep sane minimum widths"""
+class _WeightedTableMixin:
+    """Shared responsive column sizing for item- and model-backed tables."""
 
-    def __init__(
+    def _init_weighted_table(
         self,
-        rows,
         columns,
         weights=None,
         minimum_widths=None,
-        parent=None,
     ):
-        super().__init__(
-            rows,
-            columns,
-            parent,
-        )
-
+        self._weighted_column_count = columns
         self._column_weights = list(
             weights or [1] * columns
         )
-
         self._minimum_widths = list(
             minimum_widths or [1] * columns
         )
@@ -237,33 +236,16 @@ class WeightedTableWidget(QTableWidget):
                 "minimum width count must match table column count"
             )
 
-        self.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-        self.setViewportMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-        self.setFrameShape(
-            QFrame.Shape.NoFrame
-        )
-        self.setFrameShadow(
-            QFrame.Shadow.Plain
-        )
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setViewportMargins(0, 0, 0, 0)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setFrameShadow(QFrame.Shadow.Plain)
         self.setLineWidth(0)
         self.setMidLineWidth(0)
-
         self.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
-        self.setTextElideMode(
-            Qt.TextElideMode.ElideRight
-        )
+        self.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
@@ -287,16 +269,13 @@ class WeightedTableWidget(QTableWidget):
         header.setDefaultAlignment(
             Qt.AlignmentFlag.AlignCenter
         )
-        header.setTextElideMode(
-            Qt.TextElideMode.ElideRight
-        )
+        header.setTextElideMode(Qt.TextElideMode.ElideRight)
         header.sectionResized.connect(
             self._on_section_resized
         )
 
-
     def set_column_weights(self, weights):
-        if len(weights) != self.columnCount():
+        if len(weights) != self._weighted_column_count:
             raise ValueError(
                 "column weight count must match table column count"
             )
@@ -321,7 +300,7 @@ class WeightedTableWidget(QTableWidget):
         if self._programmatic_resize:
             return
 
-        if column >= self.columnCount() - 1:
+        if column >= self._weighted_column_count - 1:
             return
 
         available_width = (
@@ -334,10 +313,7 @@ class WeightedTableWidget(QTableWidget):
             return
 
         minimum_width = self._minimum_widths[column]
-
-        minimum_total = sum(
-            self._minimum_widths
-        )
+        minimum_total = sum(self._minimum_widths)
 
         if available_width <= minimum_total:
             self._programmatic_resize = True
@@ -352,57 +328,34 @@ class WeightedTableWidget(QTableWidget):
 
         max_width = (
             available_width
-            - sum(
-                self._minimum_widths[
-                    column + 1:
-                ]
-            )
+            - sum(self._minimum_widths[column + 1:])
             - sum(
                 self.columnWidth(index)
                 for index in range(column)
             )
         )
-
         clamped_width = max(
             minimum_width,
-            min(
-                new_width,
-                max_width,
-            ),
+            min(new_width, max_width),
         )
-
         delta = clamped_width - old_width
 
         self._programmatic_resize = True
-
         try:
             if clamped_width != new_width:
-                self.setColumnWidth(
-                    column,
-                    clamped_width,
-                )
+                self.setColumnWidth(column, clamped_width)
 
             if delta > 0:
                 remaining = delta
 
                 for other in range(
                     column + 1,
-                    self.columnCount(),
+                    self._weighted_column_count,
                 ):
-                    current = self.columnWidth(
-                        other
-                    )
-                    minimum = self._minimum_widths[
-                        other
-                    ]
-                    available = max(
-                        0,
-                        current - minimum,
-                    )
-                    take = min(
-                        available,
-                        remaining,
-                    )
+                    current = self.columnWidth(other)
+                    minimum = self._minimum_widths[other]
+                    available = max(0, current - minimum)
+                    take = min(available, remaining)
 
                     if take:
                         self.setColumnWidth(
@@ -422,11 +375,9 @@ class WeightedTableWidget(QTableWidget):
 
             elif delta < 0:
                 other = column + 1
-
                 self.setColumnWidth(
                     other,
-                    self.columnWidth(other)
-                    - delta,
+                    self.columnWidth(other) - delta,
                 )
 
         finally:
@@ -438,9 +389,7 @@ class WeightedTableWidget(QTableWidget):
                 self.columnWidth(index)
                 - self._minimum_widths[index],
             )
-            for index in range(
-                self.columnCount()
-            )
+            for index in range(self._weighted_column_count)
         ]
 
     def _resize_weighted_columns(self):
@@ -456,76 +405,81 @@ class WeightedTableWidget(QTableWidget):
         if available_width <= 0:
             return
 
-        minimum_total = sum(
-            self._minimum_widths
-        )
+        minimum_total = sum(self._minimum_widths)
 
         if available_width <= minimum_total:
-            widths = list(
-                self._minimum_widths
-            )
-
+            widths = list(self._minimum_widths)
         else:
-            remaining_width = (
-                available_width
-                - minimum_total
-            )
-
-            total_weight = sum(
-                self._column_weights
-            )
+            remaining_width = available_width - minimum_total
+            total_weight = sum(self._column_weights)
 
             if total_weight <= 0:
                 return
 
             widths = []
             used_width = 0
-            last_column = self.columnCount() - 1
+            last_column = self._weighted_column_count - 1
 
-            for column, (
-                weight,
-                minimum_width,
-            ) in enumerate(
-                zip(
-                    self._column_weights,
-                    self._minimum_widths,
-                )
+            for column, (weight, minimum_width) in enumerate(
+                zip(self._column_weights, self._minimum_widths)
             ):
                 if column == last_column:
                     width = max(
                         minimum_width,
-                        available_width
-                        - used_width,
+                        available_width - used_width,
                     )
-
                 else:
                     extra_width = int(
-                        remaining_width
-                        * weight
-                        / total_weight
+                        remaining_width * weight / total_weight
                     )
-
-                    width = (
-                        minimum_width
-                        + extra_width
-                    )
-
+                    width = minimum_width + extra_width
                     used_width += width
 
                 widths.append(width)
 
         self._programmatic_resize = True
-
         try:
-            for column, width in enumerate(
-                widths
-            ):
-                self.setColumnWidth(
-                    column,
-                    width,
-                )
+            for column, width in enumerate(widths):
+                self.setColumnWidth(column, width)
         finally:
             self._programmatic_resize = False
+
+
+class WeightedTableWidget(_WeightedTableMixin, QTableWidget):
+    """Responsive item-backed table with sane column minimums."""
+
+    def __init__(
+        self,
+        rows,
+        columns,
+        weights=None,
+        minimum_widths=None,
+        parent=None,
+    ):
+        super().__init__(rows, columns, parent)
+        self._init_weighted_table(
+            columns,
+            weights,
+            minimum_widths,
+        )
+
+
+class WeightedTableView(_WeightedTableMixin, QTableView):
+    """Responsive model-backed table using the same geometry as ETU tables."""
+
+    def __init__(
+        self,
+        columns,
+        weights=None,
+        minimum_widths=None,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._init_weighted_table(
+            columns,
+            weights,
+            minimum_widths,
+        )
 
 
 class CutButton(QPushButton):

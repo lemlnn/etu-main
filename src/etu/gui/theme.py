@@ -201,7 +201,33 @@ def stylesheet() -> str:
 
     QFrame#Panel {{
         background: {c["panel"]};
-        border: 0;
+        border: 1px solid {c["line"]};
+    }}
+
+    QFrame#Panel[splitAxis="horizontal"][splitEdge="first"] {{
+        border-right: 0;
+    }}
+
+    QFrame#Panel[splitAxis="horizontal"][splitEdge="middle"] {{
+        border-left: 0;
+        border-right: 0;
+    }}
+
+    QFrame#Panel[splitAxis="horizontal"][splitEdge="last"] {{
+        border-left: 0;
+    }}
+
+    QFrame#Panel[splitAxis="vertical"][splitEdge="first"] {{
+        border-bottom: 0;
+    }}
+
+    QFrame#Panel[splitAxis="vertical"][splitEdge="middle"] {{
+        border-top: 0;
+        border-bottom: 0;
+    }}
+
+    QFrame#Panel[splitAxis="vertical"][splitEdge="last"] {{
+        border-top: 0;
     }}
 
     QFrame#PanelHeader {{
@@ -388,6 +414,11 @@ def stylesheet() -> str:
         background: {c["panel"]};
     }}
 
+    QTableWidget#MarketHistoryTable,
+    QTableWidget#MarketReachableTable {{
+        border: 1px solid {c["line"]};
+    }}
+
     QTabBar {{
         background: {c["base"]};
     }}
@@ -428,7 +459,8 @@ def stylesheet() -> str:
         alternate-background-color: {c["panel"]};
     }}
 
-    QTableWidget {{
+    QTableWidget,
+    QTableView {{
         background: {c["base"]};
         border: 0;
         alternate-background-color: {c["panel"]};
@@ -472,17 +504,20 @@ def stylesheet() -> str:
         font-weight: 600;
     }}
 
-    QTableWidget::item {{
+    QTableWidget::item,
+    QTableView::item {{
         min-height: 22px;
         padding: 1px 8px;
         border-bottom: 1px solid {c["line"]};
     }}
 
-    QTableWidget::item:hover {{
+    QTableWidget::item:hover,
+    QTableView::item:hover {{
         background: {c["panel_hover"]};
     }}
 
-    QTableWidget::item:selected {{
+    QTableWidget::item:selected,
+    QTableView::item:selected {{
         background: {c["accent_dim"]};
         color: {c["text_bright"]};
     }}
@@ -501,6 +536,18 @@ def stylesheet() -> str:
 
     QSplitter::handle:vertical {{
         height: 1px;
+    }}
+
+    QSplitter#MarketOrdersSplitter::handle {{
+        background: {c["base"]};
+    }}
+
+    QSplitter#MarketOrdersSplitter::handle:hover {{
+        background: {c["base"]};
+    }}
+
+    QSplitter#MarketOrdersSplitter::handle:vertical {{
+        height: {UNIT * 3}px;
     }}
 
     QScrollBar:vertical {{
