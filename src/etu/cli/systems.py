@@ -1,28 +1,14 @@
-"""solar-system search ui. the prefix ranking is intentional because j-space names behave badly with plain fuzzy matching"""
+"""solar-system search UI using deterministic keyword matching"""
 
-from etu.cli.common import require_sde
-from etu.cli.search import (
-    merge_matches,
-    rank_system_matches,
-)
+from etu.cli.common import require_sde, select_match
+from etu.search import find_exact_name
 from etu.universe import (
-    find_system,
-    find_system_fuzzy,
+    find_system_keywords,
     get_system,
 )
 
 
-def search_system_by_name():
-    if not require_sde():
-        return
-
-    selected = resolve_system()
-
-    if selected is None:
-        return
-
-    system = get_system(selected["system_id"])
-
+def _print_system(system):
     print()
     print(f"Name: {system.get('name')}")
     print(f"System ID: {system.get('system_id')}")
@@ -46,6 +32,20 @@ def search_system_by_name():
             f"Security: {connection['security_status']:.1f}"
         )
 
+
+def search_system_by_name():
+    if not require_sde():
+        return
+
+    selected = resolve_system()
+
+    if selected is None:
+        return
+
+    system = get_system(selected["system_id"])
+    _print_system(system)
+
+
 def search_system_by_id():
     if not require_sde():
         return
@@ -64,61 +64,16 @@ def search_system_by_id():
         print(f'No solar system found with ID "{system_id}".')
         return
 
-    print()
-    print(f"Name: {system.get('name')}")
-    print(f"System ID: {system_id}")
-    print(f"Security: {system.get('security_status'):.1f}")
-
-    print(
-        f"Constellation: {system.get('constellation_name')} - "
-        f"ID: {system.get('constellation_id')}"
-    )
-
-    print(
-        f"Region: {system.get('region_name')} - "
-        f"ID: {system.get('region_id')}"
-    )
-
-    print()
-    print("Connections:")
-
-    for connection in system["connections"]:
-        print(
-            f"{connection['name']} - "
-            f"ID: {connection['system_id']} - "
-            f"Security: {connection['security_status']:.1f}"
-        )
+    _print_system(system)
 
 def select_system(matches):
-    if len(matches) == 1:
-        return matches[0]
-
-    print()
-
-    for number, match in enumerate(matches, start=1):
-        print(
-            f"[{number}] {match['name']} - "
+    return select_match(
+        matches,
+        lambda match: (
+            f"{match['name']} - "
             f"Security: {match['security_status']:.1f}"
-        )
-
-    print("[B] Back")
-
-    while True:
-        choice = input("> ").strip().lower()
-
-        if choice == "b":
-            return None
-
-        try:
-            index = int(choice) - 1
-        except ValueError:
-            print("Invalid option.")
-            continue
-
-        if 0 <= index < len(matches):
-            return matches[index]
-
-        print("Invalid option.")
+        ),
+    )
 
 def resolve_system(prompt="System"):
     name = input(f"{prompt}: ").strip()
@@ -127,35 +82,15 @@ def resolve_system(prompt="System"):
         print("System name cannot be empty.")
         return None
 
-    partial_matches = find_system(name)
-
-    exact_match = next(
-        (
-            match
-            for match in partial_matches
-            if match["name"].casefold() == name.casefold()
-        ),
-        None,
+    matches = find_system_keywords(
+        name,
+        limit=10,
     )
+
+    exact_match = find_exact_name(name, matches)
 
     if exact_match is not None:
         return exact_match
-
-    # both fuzzy and partial candidates are kept, then ranked before the list is cut down to ten
-    fuzzy_matches = find_system_fuzzy(name)
-
-    matches = merge_matches(
-        fuzzy_matches,
-        partial_matches,
-        "system_id",
-    )
-
-    matches = rank_system_matches(
-        name,
-        matches,
-    )
-
-    matches = matches[:10]
 
     if not matches:
         print(f'No solar system found matching "{name}".')

@@ -15,9 +15,14 @@ from PySide6.QtWidgets import (
 from etu import sde
 from etu.gui.pages.base import BasePage
 from etu.gui.search import (
+    KeywordSuggestions,
+    TypeCategoryFilter,
     resolve_region,
     resolve_system,
     resolve_type,
+    search_regions,
+    search_systems,
+    search_types,
 )
 from etu.gui.theme import UNIT
 from etu.gui.widgets import (
@@ -68,7 +73,7 @@ def _location_name(order, names):
 
     return names.get(
         location_id,
-        f"Player Structure · {location_id}",
+        f"Player Structure - {location_id}",
     )
 
 
@@ -150,6 +155,11 @@ class MarketPage(BasePage):
         row = QHBoxLayout()
         row.setSpacing(UNIT)
 
+        self.category_filter = TypeCategoryFilter(
+            published_only=True,
+            accessible_name="Market item category filter",
+        )
+
         self.item_input = QLineEdit()
         self.item_input.setPlaceholderText(
             "Item name or type ID"
@@ -181,6 +191,25 @@ class MarketPage(BasePage):
             "Load market data"
         )
 
+        self.item_suggestions = KeywordSuggestions(
+            self.item_input,
+            lambda query, limit: search_types(
+                query,
+                limit=limit,
+                published_only=True,
+                category_id=self.category_filter.currentData(),
+            ),
+            accessible_name="Market item suggestions",
+        )
+        self.location_suggestions = KeywordSuggestions(
+            self.location_input,
+            self._search_location_suggestions,
+            accessible_name="Market location suggestions",
+        )
+
+        row.addWidget(
+            self.category_filter
+        )
         row.addWidget(
             self.item_input,
             2,
@@ -412,14 +441,27 @@ class MarketPage(BasePage):
         self.item_input.textEdited.connect(
             self._invalidate_query
         )
+        self.category_filter.currentIndexChanged.connect(
+            self._category_changed
+        )
         self.location_input.textEdited.connect(
             self._invalidate_query
         )
         self.scope.currentIndexChanged.connect(
             self._invalidate_query
         )
+        self.scope.currentIndexChanged.connect(
+            lambda _index: self.location_suggestions.refresh()
+        )
+        self.item_suggestions.completer.activated.connect(
+            lambda _text: self._invalidate_query()
+        )
+        self.location_suggestions.completer.activated.connect(
+            lambda _text: self._invalidate_query()
+        )
 
         if not sde.is_ready():
+            self.category_filter.setEnabled(False)
             self.item_input.setEnabled(False)
             self.scope.setEnabled(False)
             self.location_input.setEnabled(False)
@@ -428,6 +470,26 @@ class MarketPage(BasePage):
                 "SDE database is not ready",
                 "error",
             )
+
+    def _category_changed(self, _index=None):
+        self._invalidate_query()
+        self.item_suggestions.refresh()
+
+    def _search_location_suggestions(
+        self,
+        query,
+        limit,
+    ):
+        if self.scope.currentData() == "system":
+            return search_systems(
+                query,
+                limit=limit,
+            )
+
+        return search_regions(
+            query,
+            limit=limit,
+        )
 
     def _invalidate_query(self):
         if self.sender() is self.scope:
@@ -450,7 +512,7 @@ class MarketPage(BasePage):
         self._selection = None
         self._loaded_tabs.clear()
         self.status.set_status(
-            "Query changed · press LOAD to refresh"
+            "Query changed   press LOAD to refresh"
         )
 
     def load_query(self):
@@ -464,7 +526,10 @@ class MarketPage(BasePage):
             )
             return
 
-        item = resolve_type(item_query)
+        item = resolve_type(
+            item_query,
+            category_id=self.category_filter.currentData(),
+        )
 
         if item is None:
             self.status.set_status(
@@ -635,7 +700,7 @@ class MarketPage(BasePage):
                 return
 
             self.status.set_status(
-                f"Market request failed · {exception}",
+                f"Market request failed   {exception}",
                 "error",
             )
 
@@ -683,7 +748,7 @@ class MarketPage(BasePage):
         }
 
         self.status.set_status(
-            f"{selection['item_name']} · {location} · "
+            f"{selection['item_name']}     {location}     "
             f"{counts[index]} {labels[index]}",
             "success",
         )

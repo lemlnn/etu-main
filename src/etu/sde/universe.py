@@ -1,12 +1,11 @@
-"""low-level universe queries for systems, regions, and static stargate links. fuzzy lookup works directly from the sde names here"""
+"""low-level universe queries for systems, regions, and static stargate links"""
 
 from collections import deque
-from functools import cache
+from functools import cache, lru_cache
 import heapq
 
-from rapidfuzz import fuzz, process
-
 from etu.sde.database import connect
+from etu.sde.search import KeywordTrieIndex, TrieIndexCache
 
 
 def get_system(system_id: int) -> dict | None:
@@ -42,35 +41,43 @@ def get_system(system_id: int) -> dict | None:
 
     return dict(result)
 
-def find_systems(name: str, limit: int = 25) -> list[dict]:
-    search = f"%{name}%"
-
+def _build_system_search_index() -> KeywordTrieIndex:
     with connect() as db:
-        results = db.execute("""
+        rows = db.execute("""
             SELECT
                 system_id,
                 name,
                 security_status
-
             FROM systems
+        """).fetchall()
 
-            WHERE name LIKE ? COLLATE NOCASE
+    return KeywordTrieIndex(rows)
 
-            ORDER BY
-                CASE
-                    WHEN lower(name) = lower(?) THEN 0
-                    ELSE 1
-                END,
-                name
 
-            LIMIT ?
-        """, (
-            search,
-            name,
-            limit,
-        )).fetchall()
+_SYSTEM_SEARCH_INDEX = TrieIndexCache(
+    _build_system_search_index
+)
 
-    return [dict(result) for result in results]
+
+def find_systems_keywords(
+    query: str,
+    limit: int | None = 25,
+) -> list[dict]:
+    return _SYSTEM_SEARCH_INDEX.get().search(
+        query,
+        limit=limit,
+    )
+
+
+def find_systems(
+    name: str,
+    limit: int = 25,
+) -> list[dict]:
+    """Compatibility wrapper using keyword search semantics."""
+    return find_systems_keywords(
+        name,
+        limit=limit,
+    )
 
 # these are static stargate links from the sde; dynamic wormhole connections are not part of this data
 def get_system_connections(system_id: int) -> list[dict]:
@@ -133,8 +140,10 @@ def _get_system_security() -> dict[int, float]:
     }
 
 def clear_universe_cache():
+    clear_universe_search_cache()
     _get_stargate_graph.cache_clear()
     _get_system_security.cache_clear()
+    _get_jump_distances.cache_clear()
 
 def _get_route_details(route_ids: list[int]) -> list[dict]:
     placeholders = ", ".join(
@@ -169,7 +178,11 @@ def _get_route_details(route_ids: list[int]) -> list[dict]:
         for system_id in route_ids
     ]
 
-def get_jump_distances(system_id: int, max_jumps: int = 40) -> dict[int, int]:
+@lru_cache(maxsize=8)
+def _get_jump_distances(
+    system_id: int,
+    max_jumps: int,
+) -> dict[int, int]:
     graph = _get_stargate_graph()
 
     distances = {
@@ -198,6 +211,18 @@ def get_jump_distances(system_id: int, max_jumps: int = 40) -> dict[int, int]:
             queue.append(destination_system_id)
 
     return distances
+
+
+def get_jump_distances(
+    system_id: int,
+    max_jumps: int = 40,
+) -> dict[int, int]:
+    # Return a copy so callers keep the previous mutable-dict contract
+    # without being able to mutate a cached result shared by later calls.
+    return _get_jump_distances(
+        system_id,
+        max_jumps,
+    ).copy()
 
 def get_route(
     origin_system_id: int,
@@ -312,48 +337,6 @@ def get_route(
 
     return _get_route_details(route_ids)
 
-def find_systems_fuzzy(
-    name: str,
-    limit: int = 10,
-    cutoff: float = 60,
-) -> list[dict]:
-    with connect() as db:
-        results = db.execute("""
-            SELECT
-                system_id,
-                name,
-                security_status
-
-            FROM systems
-        """).fetchall()
-
-    rows = [dict(result) for result in results]
-
-    choices = {
-        row["system_id"]: row["name"]
-        for row in rows
-    }
-
-    # fuzzy matching is useful for normal typos; the cli adds extra prefix ranking for j-space searches
-    matches = process.extract(
-        name,
-        choices,
-        scorer=fuzz.ratio,
-        processor=str.casefold,
-        limit=limit,
-        score_cutoff=cutoff,
-    )
-
-    rows_by_id = {
-        row["system_id"]: row
-        for row in rows
-    }
-
-    return [
-        rows_by_id[system_id]
-        for _, _, system_id in matches
-    ]
-
 def get_region(region_id: int) -> dict | None:
     with connect() as db:
         result = db.execute("""
@@ -373,71 +356,49 @@ def get_region(region_id: int) -> dict | None:
 
     return dict(result)
 
-def find_regions(name: str, limit: int = 25) -> list[dict]:
-    search = f"%{name}%"
-
+def _build_region_search_index() -> KeywordTrieIndex:
     with connect() as db:
-        results = db.execute("""
+        rows = db.execute("""
             SELECT
                 region_id,
                 name
-
-            FROM regions
-
-            WHERE name LIKE ? COLLATE NOCASE
-
-            ORDER BY
-                CASE
-                    WHEN lower(name) = lower(?) THEN 0
-                    ELSE 1
-                END,
-                name
-
-            LIMIT ?
-        """, (
-            search,
-            name,
-            limit,
-        )).fetchall()
-
-    return [dict(result) for result in results]
-
-def find_regions_fuzzy(
-    name: str,
-    limit: int = 10,
-    cutoff: float = 60,
-) -> list[dict]:
-    with connect() as db:
-        results = db.execute("""
-            SELECT
-                region_id,
-                name
-
             FROM regions
         """).fetchall()
 
-    rows = [dict(result) for result in results]
+    return KeywordTrieIndex(rows)
 
-    choices = {
-        row["region_id"]: row["name"]
-        for row in rows
-    }
 
-    matches = process.extract(
-        name,
-        choices,
-        scorer=fuzz.ratio,
-        processor=str.casefold,
+_REGION_SEARCH_INDEX = TrieIndexCache(
+    _build_region_search_index
+)
+
+
+def find_regions_keywords(
+    query: str,
+    limit: int | None = 25,
+) -> list[dict]:
+    return _REGION_SEARCH_INDEX.get().search(
+        query,
         limit=limit,
-        score_cutoff=cutoff,
     )
 
-    rows_by_id = {
-        row["region_id"]: row
-        for row in rows
-    }
 
-    return [
-        rows_by_id[region_id]
-        for _, _, region_id in matches
-    ]
+def warm_universe_search_indexes():
+    _SYSTEM_SEARCH_INDEX.get()
+    _REGION_SEARCH_INDEX.get()
+
+
+def clear_universe_search_cache():
+    _SYSTEM_SEARCH_INDEX.clear()
+    _REGION_SEARCH_INDEX.clear()
+
+
+def find_regions(
+    name: str,
+    limit: int = 25,
+) -> list[dict]:
+    """Compatibility wrapper using keyword search semantics."""
+    return find_regions_keywords(
+        name,
+        limit=limit,
+    )

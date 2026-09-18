@@ -291,7 +291,8 @@ def stylesheet() -> str:
     }}
 
     QLineEdit,
-    QComboBox {{
+    QComboBox,
+    QSpinBox#SettingsNumber {{
         min-height: 28px;
         padding: 0 8px;
         background: {c["base"]};
@@ -302,12 +303,14 @@ def stylesheet() -> str:
     }}
 
     QLineEdit:hover,
-    QComboBox:hover {{
+    QComboBox:hover,
+    QSpinBox#SettingsNumber:hover {{
         border-color: {c["line_bright"]};
     }}
 
     QLineEdit:focus,
-    QComboBox:focus {{
+    QComboBox:focus,
+    QSpinBox#SettingsNumber:focus {{
         background: {c["panel"]};
         border-color: {c["accent"]};
         color: {c["text_bright"]};
@@ -315,6 +318,38 @@ def stylesheet() -> str:
 
     QLineEdit::placeholder {{
         color: {c["text_disabled"]};
+    }}
+
+    QCheckBox#SettingsToggle {{
+        min-height: 28px;
+        spacing: 8px;
+        color: {c["text"]};
+        font-size: {t["small"]}pt;
+        font-weight: 600;
+    }}
+
+    QCheckBox#SettingsToggle::indicator {{
+        width: 14px;
+        height: 14px;
+        background: {c["base"]};
+        border: 1px solid {c["line_bright"]};
+    }}
+
+    QCheckBox#SettingsToggle::indicator:hover {{
+        border-color: {c["accent_bright"]};
+    }}
+
+    QCheckBox#SettingsToggle::indicator:checked {{
+        background: {c["accent_bright"]};
+        border-color: {c["accent_bright"]};
+    }}
+
+    QCheckBox#SettingsToggle:focus {{
+        color: {c["text_bright"]};
+    }}
+
+    QCheckBox#SettingsToggle:focus::indicator {{
+        border-color: {c["text_bright"]};
     }}
 
     QComboBox::drop-down {{
@@ -327,6 +362,25 @@ def stylesheet() -> str:
         border: 1px solid {c["line"]};
         color: {c["text"]};
         selection-background-color: {c["accent_dim"]};
+    }}
+
+    QAbstractItemView#SearchSuggestions {{
+        background: {c["panel_raised"]};
+        border: 1px solid {c["line"]};
+        color: {c["text"]};
+        selection-background-color: {c["accent_dim"]};
+        selection-color: {c["text_bright"]};
+    }}
+
+    QAbstractItemView#SearchSuggestions::item {{
+        min-height: 22px;
+        padding: 0 8px;
+        border: 0;
+    }}
+
+    QAbstractItemView#SearchSuggestions::item:hover {{
+        background: {c["panel_hover"]};
+        color: {c["text_bright"]};
     }}
 
     QTabWidget::pane {{

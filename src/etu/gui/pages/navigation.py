@@ -12,7 +12,11 @@ from PySide6.QtWidgets import (
 
 from etu import sde
 from etu.gui.pages.base import BasePage
-from etu.gui.search import resolve_system
+from etu.gui.search import (
+    KeywordSuggestions,
+    resolve_system,
+    search_systems,
+)
 from etu.gui.theme import UNIT
 from etu.gui.widgets import (
     CutButton,
@@ -91,6 +95,17 @@ class NavigationPage(BasePage):
         self.plan_button = CutButton("PLAN")
         self.plan_button.setAccessibleName(
             "Plan route"
+        )
+
+        self.origin_suggestions = KeywordSuggestions(
+            self.origin,
+            search_systems,
+            accessible_name="Origin system suggestions",
+        )
+        self.destination_suggestions = KeywordSuggestions(
+            self.destination,
+            search_systems,
+            accessible_name="Destination system suggestions",
         )
 
         grid.addWidget(

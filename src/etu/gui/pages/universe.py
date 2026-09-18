@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 from etu import sde
 from etu.gui.pages.base import BasePage
 from etu.gui.search import (
+    match_count,
     search_regions,
     search_systems,
 )
@@ -218,10 +219,11 @@ class UniversePage(BasePage):
                 match,
             )
 
+        count = match_count(matches)
         self.status.set_status(
-            f"{len(matches)} match"
-            if len(matches) == 1
-            else f"{len(matches)} matches",
+            f"{count} match"
+            if count == 1
+            else f"{count} matches",
             "success",
         )
         self.results.setCurrentRow(0)

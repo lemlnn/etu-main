@@ -30,7 +30,7 @@ class BasePage(QWidget):
             UNIT,
             UNIT,
             UNIT,
-            UNIT,
+            0,
         )
         self.root_layout.setSpacing(UNIT)
 

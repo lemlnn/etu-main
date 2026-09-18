@@ -1,9 +1,7 @@
 """low-level inventory queries against etu's sqlite sde. the queries return plain dictionaries so higher layers stay simple"""
 
-from rapidfuzz import fuzz, process
-
 from etu.sde.database import connect
-
+from etu.sde.search import KeywordTrieIndex, TrieIndexCache
 
 def get_category(category_id: int) -> dict | None:
     with connect() as db:
@@ -20,6 +18,40 @@ def get_category(category_id: int) -> dict | None:
         return None
 
     return dict(result)
+
+def get_type_categories(
+    published_only: bool = True,
+) -> list[dict]:
+    """Return SDE inventory categories that contain searchable item types."""
+    published_clause = (
+        "AND categories.published = 1 AND types.published = 1"
+        if published_only
+        else ""
+    )
+
+    with connect() as db:
+        rows = db.execute(f"""
+            SELECT DISTINCT
+                categories.category_id,
+                categories.name,
+                categories.published
+
+            FROM categories
+
+            JOIN groups
+                ON groups.category_id = categories.category_id
+
+            JOIN types
+                ON types.group_id = groups.group_id
+
+            WHERE 1 = 1
+            {published_clause}
+
+            ORDER BY categories.name COLLATE NOCASE,
+                     categories.category_id
+        """).fetchall()
+
+    return [dict(row) for row in rows]
 
 def get_group(group_id: int) -> dict | None:
     with connect() as db:
@@ -82,104 +114,86 @@ def get_type(type_id: int) -> dict | None:
 
     return dict(result)
 
-def find_types(name: str, limit: int = 25) -> list[dict]:
-    """
-    search inventory types by name
-
-    exact matches are sorted first, followed by partial matches
-    """
-
-    search = f"%{name}%"
-
-    with connect() as db:
-        results = db.execute("""
-            SELECT
-                types.type_id,
-                types.name,
-                types.meta_group_id,
-
-                groups.group_id,
-                groups.name AS group_name,
-
-                categories.category_id,
-                categories.name AS category_name
-
-            FROM types
-
-            JOIN groups
-                ON types.group_id = groups.group_id
-
-            JOIN categories
-                ON groups.category_id = categories.category_id
-
-            WHERE types.name LIKE ? COLLATE NOCASE
-
-            ORDER BY
-                CASE
-                    WHEN lower(types.name) = lower(?) THEN 0
-                    ELSE 1
-                END,
-                types.name
-
-            LIMIT ?
-        """, (
-            search,
-            name,
-            limit,
-        )).fetchall()
-
-    return [dict(result) for result in results]
-
-def find_types_fuzzy(
-    name: str,
-    limit: int = 10,
-    cutoff: float = 60,
-) -> list[dict]:
-    with connect() as db:
-        results = db.execute("""
-            SELECT
-                types.type_id,
-                types.name,
-                types.meta_group_id,
-
-                groups.group_id,
-                groups.name AS group_name,
-
-                categories.category_id,
-                categories.name AS category_name
-
-            FROM types
-
-            JOIN groups
-                ON types.group_id = groups.group_id
-
-            JOIN categories
-                ON groups.category_id = categories.category_id
-        """).fetchall()
-
-    rows = [dict(result) for result in results]
-
-    choices = {
-        row["type_id"]: row["name"]
-        for row in rows
-    }
-
-    # rapidfuzz adds typo tolerance without changing the exact/partial sql search path
-    matches = process.extract(
-        name,
-        choices,
-        scorer=fuzz.ratio,
-        processor=str.casefold,
-        limit=limit,
-        score_cutoff=cutoff,
+def _build_type_search_index(
+    published_only: bool,
+) -> KeywordTrieIndex:
+    where = (
+        "WHERE types.published = 1"
+        if published_only
+        else ""
     )
 
-    rows_by_id = {
-        row["type_id"]: row
-        for row in rows
-    }
+    with connect() as db:
+        rows = db.execute(f"""
+            SELECT
+                types.type_id,
+                types.name,
+                types.meta_group_id,
+                types.published,
 
-    return [
-        rows_by_id[type_id]
-        for _, _, type_id in matches
-    ]
+                groups.group_id,
+                groups.name AS group_name,
+
+                categories.category_id,
+                categories.name AS category_name
+
+            FROM types
+
+            JOIN groups
+                ON types.group_id = groups.group_id
+
+            JOIN categories
+                ON groups.category_id = categories.category_id
+
+            {where}
+        """).fetchall()
+
+    return KeywordTrieIndex(
+        rows,
+        facet_keys=("category_id",),
+    )
+
+
+_TYPE_SEARCH_INDEX = TrieIndexCache(
+    _build_type_search_index
+)
+
+def warm_type_search_index(
+    published_only: bool = True,
+):
+    _TYPE_SEARCH_INDEX.get(
+        bool(published_only)
+    )
+
+def clear_inventory_search_cache():
+    _TYPE_SEARCH_INDEX.clear()
+
+def find_types_keywords(
+    query: str,
+    limit: int | None = 50,
+    published_only: bool = True,
+    category_id: int | None = None,
+) -> list[dict]:
+    """Search inventory types using the cached in-memory keyword trie."""
+    return _TYPE_SEARCH_INDEX.get(
+        bool(published_only)
+    ).search(
+        query,
+        limit=limit,
+        filters=(
+            {"category_id": int(category_id)}
+            if category_id is not None
+            else None
+        ),
+    )
+
+def find_types(
+    name: str,
+    limit: int = 25,
+) -> list[dict]:
+    """Compatibility wrapper using the application-wide keyword search."""
+    return find_types_keywords(
+        name,
+        limit=limit,
+        published_only=False,
+    )

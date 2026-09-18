@@ -2,7 +2,8 @@
 
 from collections import defaultdict
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -11,6 +12,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOption,
+    QStyleOptionViewItem,
     QTabWidget,
     QTextBrowser,
     QTreeWidget,
@@ -21,18 +26,16 @@ from PySide6.QtWidgets import (
 
 from etu import sde
 from etu.inventory import (
-    find_type,
-    find_type_fuzzy,
     get_type,
     get_type_dogma,
 )
 from etu.gui.dogma import (
+    attribute_display_rows,
     dogma_icon,
     dogma_icon_size,
     fitting_attributes,
     fitting_effect_rows,
     format_dogma_value,
-    is_attribute_visible,
 )
 from etu.gui.meta import (
     META_GROUP_ROLE,
@@ -40,12 +43,20 @@ from etu.gui.meta import (
     meta_group_name,
 )
 from etu.gui.pages.base import BasePage
-from etu.gui.theme import UNIT
+from etu.gui.search import (
+    Debouncer,
+    TypeCategoryFilter,
+    match_count,
+    search_types,
+)
+from etu.gui.preferences import inventory_search_preferences
+from etu.gui.theme import COLORS, UNIT
 from etu.gui.widgets import (
     CutButton,
     DetailRow,
     PhotonPanel,
     PhotonToolStrip,
+    StatusLabel,
     panel_splitter,
 )
 
@@ -59,6 +70,29 @@ ROMAN_LEVELS = {
     5: "V",
 }
 
+ATTRIBUTE_SECTION_ROLE = int(
+    Qt.ItemDataRole.UserRole
+) + 1
+GROUP_HEADER_ROLE = ATTRIBUTE_SECTION_ROLE + 1
+
+
+class InventoryDetailDelegate(QStyledItemDelegate):
+    def paint(
+        self,
+        painter,
+        option,
+        index,
+    ):
+        if index.data(GROUP_HEADER_ROLE):
+            option = QStyleOptionViewItem(option)
+            option.state &= ~QStyle.StateFlag.State_MouseOver
+
+        super().paint(
+            painter,
+            option,
+            index,
+        )
+
 
 class InventoryPage(BasePage):
     def __init__(self):
@@ -71,9 +105,16 @@ class InventoryPage(BasePage):
         search_row = QHBoxLayout()
         search_row.setSpacing(UNIT)
 
+        preferences = inventory_search_preferences()
+
+        self.category_filter = TypeCategoryFilter(
+            published_only=preferences.published_only,
+            accessible_name="Inventory category filter",
+        )
+
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(
-            "Search item name or enter a type ID"
+            "Search item keywords or enter a type ID"
         )
         self.search_input.setAccessibleName(
             "Item name or type ID"
@@ -84,6 +125,14 @@ class InventoryPage(BasePage):
             "Search inventory"
         )
 
+        self._search_debouncer = Debouncer(
+            self,
+            self.search,
+        )
+
+        search_row.addWidget(
+            self.category_filter
+        )
         search_row.addWidget(
             self.search_input,
             1,
@@ -92,8 +141,13 @@ class InventoryPage(BasePage):
             self.search_button,
         )
 
+        self.search_status = StatusLabel()
+
         search_panel.body_layout.addLayout(
             search_row
+        )
+        search_panel.body_layout.addWidget(
+            self.search_status
         )
 
         self.root_layout.addWidget(
@@ -189,11 +243,18 @@ class InventoryPage(BasePage):
         self.search_input.returnPressed.connect(
             self.search
         )
+        self.search_input.textChanged.connect(
+            self._queue_search
+        )
+        self.category_filter.currentIndexChanged.connect(
+            lambda _index: self.search()
+        )
         self.results.currentItemChanged.connect(
             self.show_item
         )
 
         if not sde.is_ready():
+            self.category_filter.setEnabled(False)
             self.search_input.setEnabled(False)
             self.search_button.setEnabled(False)
             self.results.addItem(
@@ -252,6 +313,14 @@ class InventoryPage(BasePage):
         self.attributes_view = self._detail_tree(
             "Item dogma attributes",
         )
+        self._configure_toggle_tree(
+            self.attributes_view
+        )
+        self.attributes_view.setItemDelegate(
+            InventoryDetailDelegate(
+                self.attributes_view
+            )
+        )
         self.attributes_tab = self._tree_tab(
             self.attributes_view
         )
@@ -277,11 +346,8 @@ class InventoryPage(BasePage):
             "Required skills",
             decorated=True,
         )
-        self.requirements_view.setItemsExpandable(
-            False
-        )
-        self.requirements_view.itemClicked.connect(
-            self._toggle_requirement
+        self._configure_toggle_tree(
+            self.requirements_view
         )
         self.requirements_tab = self._tree_tab(
             self.requirements_view
@@ -289,6 +355,18 @@ class InventoryPage(BasePage):
         self.tabs.addTab(
             self.requirements_tab,
             "Requirements",
+        )
+
+    def _configure_toggle_tree(
+        self,
+        tree,
+    ):
+        tree.setItemsExpandable(False)
+        tree.itemPressed.connect(
+            self._toggle_tree_item
+        )
+        tree.itemDoubleClicked.connect(
+            self._toggle_tree_item
         )
 
     def _build_used_with_tab(self):
@@ -346,6 +424,7 @@ class InventoryPage(BasePage):
         decorated=False,
     ):
         tree = QTreeWidget()
+        tree.setObjectName("InventoryDetailTree")
         tree.setAccessibleName(accessible_name)
         tree.setColumnCount(2)
         tree.setHeaderHidden(True)
@@ -355,8 +434,15 @@ class InventoryPage(BasePage):
         tree.setSelectionMode(
             QAbstractItemView.SelectionMode.NoSelection
         )
+        tree.setAlternatingRowColors(False)
         tree.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        tree.setStyleSheet(
+            f"QTreeWidget#InventoryDetailTree {{"
+            f" background: {COLORS['panel']};"
+            f" alternate-background-color: {COLORS['panel']};"
+            f" }}"
         )
 
         header = tree.header()
@@ -380,6 +466,20 @@ class InventoryPage(BasePage):
             decorated=False,
         )
         tree.setItemsExpandable(False)
+        tree.setStyleSheet(
+            tree.styleSheet()
+            + f"QTreeWidget#InventoryDetailTree::branch:hover {{"
+            + f" background: {COLORS['panel_hover']};"
+            + f" border-left: {UNIT}px solid {COLORS['panel']};"
+            + " }"
+            + f"QTreeWidget#InventoryDetailTree::item:hover {{"
+            + f" background: {COLORS['panel_hover']};"
+            + f" margin-right: {UNIT}px;"
+            + " }"
+            + f"QTreeWidget#InventoryDetailTree::item:has-children:hover {{"
+            + f" margin-left: {UNIT}px;"
+            + " }"
+        )
         tree.setColumnCount(1)
         tree.header().setSectionResizeMode(
             0,
@@ -387,31 +487,62 @@ class InventoryPage(BasePage):
         )
         return tree
 
-    def search(self):
-        query = self.search_input.text().strip()
+    def _queue_search(self):
+        self._search_debouncer.schedule()
 
-        if not query:
-            return
+    def refresh_search_preferences(self):
+        preferences = inventory_search_preferences()
+        self.category_filter.refresh(
+            published_only=preferences.published_only,
+        )
+        self.search()
+
+    def search(self):
+        self._search_debouncer.cancel()
+        query = self.search_input.text().strip()
 
         self.results.clear()
 
-        if query.isdigit():
-            data = get_type(int(query))
-
-            if data is not None:
-                self._add_result(data)
-
+        if not query:
+            self.search_status.set_status("")
             return
 
-        exact = find_type(query)
-        fuzzy = find_type_fuzzy(query)
+        preferences = inventory_search_preferences()
+        limit = (
+            None
+            if preferences.show_all_results
+            else preferences.result_limit
+        )
 
-        merged = {}
-        for result in exact + fuzzy:
-            merged[result["type_id"]] = result
+        results = search_types(
+            query,
+            limit=limit,
+            published_only=preferences.published_only,
+            category_id=self.category_filter.currentData(),
+        )
 
-        for result in list(merged.values())[:50]:
-            self._add_result(result)
+        self.results.setUpdatesEnabled(False)
+
+        try:
+            for result in results:
+                self._add_result(result)
+        finally:
+            self.results.setUpdatesEnabled(True)
+
+        if not results:
+            self.search_status.set_status(
+                f'No item found matching "{query}"',
+                "warning",
+            )
+            return
+
+        count = match_count(results)
+        self.search_status.set_status(
+            f"{count} match"
+            if count == 1
+            else f"{count} matches",
+            "success",
+        )
 
     def _add_result(self, result):
         item = QListWidgetItem(
@@ -603,7 +734,8 @@ class InventoryPage(BasePage):
         )
 
         self.description.setPlainText(
-            data.get("description") or ""
+            data.get("description")
+            or "No description available"
         )
 
     def _show_attributes(
@@ -611,30 +743,107 @@ class InventoryPage(BasePage):
         attributes,
     ):
         self.attributes_view.clear()
+        rows = attribute_display_rows(attributes)
 
-        visible = [
-            attribute
-            for attribute in attributes
-            if is_attribute_visible(attribute)
-        ]
-
-        if not visible:
+        if not rows:
             self._empty_tree(
                 self.attributes_view,
                 "No displayable dogma attributes",
             )
             return False
 
-        for attribute in visible:
+        for row in rows:
+            if row["kind"] == "section":
+                self._add_attribute_section(row)
+                continue
+
             self._add_detail_item(
                 self.attributes_view,
-                attribute.get("display_name")
-                or attribute.get("name"),
-                format_dogma_value(attribute),
-                attribute.get("icon_id"),
+                row["label"],
+                row["value"],
+                row.get("icon_id"),
             )
 
         return True
+
+    def _add_attribute_section(
+        self,
+        section,
+    ):
+        item = QTreeWidgetItem([
+            section["label"],
+            "",
+        ])
+        item.setData(
+            0,
+            ATTRIBUTE_SECTION_ROLE,
+            True,
+        )
+        self.attributes_view.addTopLevelItem(item)
+
+        for group in section["groups"]:
+            self._group_header(
+                item,
+                group["label"],
+            )
+
+            for row in group["rows"]:
+                self._add_detail_item(
+                    item,
+                    row["label"],
+                    row["value"],
+                    row.get("icon_id"),
+                )
+
+        item.setExpanded(False)
+        self._set_attribute_section_state(item)
+
+    def _set_attribute_section_state(
+        self,
+        item,
+    ):
+        expanded = item.isExpanded()
+        item.setIcon(
+            0,
+            self._tree_branch_icon(expanded),
+        )
+        item.setData(
+            0,
+            Qt.ItemDataRole.AccessibleTextRole,
+            (
+                f"{item.text(0)}, "
+                f"{'expanded' if expanded else 'collapsed'}"
+            ),
+        )
+
+
+    def _tree_branch_icon(
+        self,
+        expanded,
+    ):
+        size = self.attributes_view.indentation()
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        option = QStyleOption()
+        option.initFrom(self.attributes_view)
+        option.rect = QRect(0, 0, size, size)
+        primitive = (
+            QStyle.PrimitiveElement.PE_IndicatorArrowDown
+            if expanded
+            else QStyle.PrimitiveElement.PE_IndicatorArrowRight
+        )
+
+        painter = QPainter(pixmap)
+        self.attributes_view.style().drawPrimitive(
+            primitive,
+            option,
+            painter,
+            self.attributes_view,
+        )
+        painter.end()
+
+        return QIcon(pixmap)
 
     def _show_fitting(
         self,
@@ -700,7 +909,7 @@ class InventoryPage(BasePage):
         self.requirements_view.expandAll()
         return True
 
-    def _toggle_requirement(
+    def _toggle_tree_item(
         self,
         item,
         column,
@@ -711,6 +920,9 @@ class InventoryPage(BasePage):
         item.setExpanded(
             not item.isExpanded()
         )
+
+        if item.data(0, ATTRIBUTE_SECTION_ROLE):
+            self._set_attribute_section_state(item)
 
     def _add_requirement(
         self,
@@ -844,7 +1056,7 @@ class InventoryPage(BasePage):
 
     def _add_detail_item(
         self,
-        tree,
+        parent,
         label,
         value,
         icon_id=None,
@@ -866,11 +1078,15 @@ class InventoryPage(BasePage):
                 | Qt.AlignmentFlag.AlignVCenter
             ),
         )
-        tree.addTopLevelItem(item)
+
+        if isinstance(parent, QTreeWidget):
+            parent.addTopLevelItem(item)
+        else:
+            parent.addChild(item)
 
     def _group_header(
         self,
-        tree,
+        parent,
         text,
     ):
         item = QTreeWidgetItem([""])
@@ -878,14 +1094,27 @@ class InventoryPage(BasePage):
             item.flags()
             & ~Qt.ItemFlag.ItemIsSelectable
         )
+        item.setData(
+            0,
+            GROUP_HEADER_ROLE,
+            True,
+        )
 
-        tree.addTopLevelItem(item)
-        item.setFirstColumnSpanned(True)
+        if isinstance(parent, QTreeWidget):
+            tree = parent
+            tree.addTopLevelItem(item)
+        else:
+            tree = parent.treeWidget()
+            parent.addChild(item)
+
+        if tree.columnCount() > 1:
+            item.setFirstColumnSpanned(True)
 
         label = QLabel(text)
         label.setObjectName("DogmaGroupHeader")
         label.setAccessibleName(text)
         label.setMinimumHeight(UNIT * 3)
+
         tree.setItemWidget(
             item,
             0,

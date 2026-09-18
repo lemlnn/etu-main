@@ -26,21 +26,26 @@ from etu.sde.dogma import (
 )
 from etu.sde.inventory import (
     find_types,
-    find_types_fuzzy,
+    clear_inventory_search_cache,
+    find_types_keywords,
     get_category,
     get_group,
+    get_type_categories,
     get_type,
+    warm_type_search_index,
 )
 from etu.sde.universe import (
+    clear_universe_search_cache,
     find_regions,
-    find_regions_fuzzy,
+    find_regions_keywords,
     find_systems,
-    find_systems_fuzzy,
+    find_systems_keywords,
     get_jump_distances,
     get_region,
     get_route,
     get_system,
     get_system_connections,
+    warm_universe_search_indexes,
 )
 from etu.sde.updater import (
     LATEST_SDE_URL,
@@ -49,3 +54,17 @@ from etu.sde.updater import (
     get_latest_sde_build,
     update_sde,
 )
+
+
+def warm_search_indexes():
+    """Warm the default GUI search indexes without building unpublished inventory."""
+    if not is_ready():
+        return
+
+    warm_type_search_index(True)
+    warm_universe_search_indexes()
+
+
+def clear_search_caches():
+    clear_inventory_search_cache()
+    clear_universe_search_cache()

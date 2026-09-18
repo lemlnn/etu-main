@@ -31,24 +31,14 @@ def get_best_buy(region_id, type_id, system_id=None):
         system_id,
     )
 
-    if not orders:
-        return None
-
-    buy_orders = [
-        order
-        for order in orders
-        if order["is_buy_order"]
-    ]
-
-    if not buy_orders:
-        return None
-
-    highest_buy = max(
-        order["price"]
-        for order in buy_orders
+    return max(
+        (
+            order["price"]
+            for order in orders
+            if order["is_buy_order"]
+        ),
+        default=None,
     )
-
-    return highest_buy
 
 def get_best_sell(region_id, type_id, system_id=None):
     orders = get_orders(
@@ -57,24 +47,14 @@ def get_best_sell(region_id, type_id, system_id=None):
         system_id,
     )
 
-    if not orders:
-        return None
-
-    sell_orders = [
-        order
-        for order in orders
-        if not order["is_buy_order"]
-    ]
-
-    if not sell_orders:
-        return None
-
-    cheapest_sell = min(
-        order["price"]
-        for order in sell_orders
+    return min(
+        (
+            order["price"]
+            for order in orders
+            if not order["is_buy_order"]
+        ),
+        default=None,
     )
-
-    return cheapest_sell
 
 def get_location_names(location_ids):
     # public name resolution works for normal stations; larger structure ids are left for sso later

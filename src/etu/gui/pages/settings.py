@@ -1,9 +1,26 @@
 """settings and local data status page"""
 
-from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QSpinBox,
+    QWidget,
+)
 
 from etu import sde
 from etu.gui.pages.base import BasePage
+from etu.gui.preferences import (
+    MAX_INVENTORY_RESULT_LIMIT,
+    MIN_INVENTORY_RESULT_LIMIT,
+    inventory_search_preferences,
+    set_inventory_published_only,
+    set_inventory_result_limit,
+    set_inventory_show_all_results,
+)
 from etu.gui.theme import UNIT
 from etu.gui.widgets import (
     CutButton,
@@ -15,6 +32,8 @@ from etu.sde.universe import clear_universe_cache
 
 
 class SettingsPage(BasePage):
+    inventory_settings_changed = Signal()
+
     def __init__(self):
         super().__init__(
             "Settings",
@@ -71,16 +90,139 @@ class SettingsPage(BasePage):
             self.update_status
         )
 
+        inventory_panel = PhotonPanel(
+            "INVENTORY SETTINGS",
+        )
+        inventory_panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+
+        preferences = inventory_search_preferences()
+
+        self.show_all_results = QCheckBox(
+            "SHOW ALL SEARCH RESULTS"
+        )
+        self.show_all_results.setObjectName(
+            "SettingsToggle"
+        )
+        self.show_all_results.setAccessibleName(
+            "Show all inventory search results"
+        )
+        self.show_all_results.setChecked(
+            preferences.show_all_results
+        )
+
+        self.published_only = QCheckBox(
+            "PUBLISHED ITEMS ONLY"
+        )
+        self.published_only.setObjectName(
+            "SettingsToggle"
+        )
+        self.published_only.setAccessibleName(
+            "Show published inventory items only"
+        )
+        self.published_only.setChecked(
+            preferences.published_only
+        )
+
+        self.result_limit_row = QWidget()
+        result_limit_layout = QHBoxLayout(
+            self.result_limit_row
+        )
+        result_limit_layout.setContentsMargins(
+            0, 0, 0, 0
+        )
+        result_limit_layout.setSpacing(UNIT)
+
+        result_limit_label = QLabel(
+            "RESULT LIMIT"
+        )
+        result_limit_label.setObjectName(
+            "SectionLabel"
+        )
+        result_limit_label.setFixedWidth(
+            UNIT * 15
+        )
+
+        self.result_limit = QSpinBox()
+        self.result_limit.setObjectName(
+            "SettingsNumber"
+        )
+        self.result_limit.setAccessibleName(
+            "Maximum inventory search results"
+        )
+        self.result_limit.setRange(
+            MIN_INVENTORY_RESULT_LIMIT,
+            MAX_INVENTORY_RESULT_LIMIT,
+        )
+        self.result_limit.setValue(
+            preferences.result_limit
+        )
+        self.result_limit.setButtonSymbols(
+            QAbstractSpinBox.ButtonSymbols.NoButtons
+        )
+        self.result_limit.setFixedWidth(UNIT * 12)
+
+        result_limit_layout.addWidget(
+            result_limit_label
+        )
+        result_limit_layout.addWidget(
+            self.result_limit
+        )
+        result_limit_layout.addStretch()
+
+        inventory_panel.body_layout.addWidget(
+            self.show_all_results
+        )
+        inventory_panel.body_layout.addWidget(
+            self.result_limit_row
+        )
+        inventory_panel.body_layout.addWidget(
+            self.published_only
+        )
+
         self.root_layout.addWidget(
             data_panel
+        )
+        self.root_layout.addWidget(
+            inventory_panel
         )
         self.root_layout.addStretch()
 
         self.update_button.clicked.connect(
             self._update_action
         )
+        self.show_all_results.toggled.connect(
+            self._set_show_all_results
+        )
+        self.result_limit.valueChanged.connect(
+            self._set_result_limit
+        )
+        self.published_only.toggled.connect(
+            self._set_published_only
+        )
 
+        self._sync_result_limit_visibility()
         self.refresh_status()
+
+    def _sync_result_limit_visibility(self):
+        self.result_limit_row.setVisible(
+            not self.show_all_results.isChecked()
+        )
+
+    def _set_show_all_results(self, enabled):
+        set_inventory_show_all_results(enabled)
+        self._sync_result_limit_visibility()
+        self.inventory_settings_changed.emit()
+
+    def _set_result_limit(self, limit):
+        set_inventory_result_limit(limit)
+        self.inventory_settings_changed.emit()
+
+    def _set_published_only(self, enabled):
+        set_inventory_published_only(enabled)
+        self.inventory_settings_changed.emit()
 
     def refresh_status(self):
         ready = sde.is_ready()

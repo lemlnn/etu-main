@@ -17,8 +17,14 @@ def get_system(system_id: int) -> dict | None:
 def find_system(name: str) -> list[dict]:
     return sde.find_systems(name)
 
-def find_system_fuzzy(name: str) -> list[dict]:
-    return sde.find_systems_fuzzy(name)
+def find_system_keywords(
+    query: str,
+    limit: int | None = 25,
+) -> list[dict]:
+    return sde.find_systems_keywords(
+        query,
+        limit=limit,
+    )
 
 def get_region(region_id: int) -> dict | None:
     return sde.get_region(region_id)
@@ -26,8 +32,14 @@ def get_region(region_id: int) -> dict | None:
 def find_region(name: str) -> list[dict]:
     return sde.find_regions(name)
 
-def find_region_fuzzy(name: str) -> list[dict]:
-    return sde.find_regions_fuzzy(name)
+def find_region_keywords(
+    query: str,
+    limit: int | None = 25,
+) -> list[dict]:
+    return sde.find_regions_keywords(
+        query,
+        limit=limit,
+    )
 
 def get_jump_distances(system_id: int, max_jumps: int = 40) -> dict[int, int]:
     return sde.get_jump_distances(

@@ -30,7 +30,13 @@ def get_type_dogma_attributes(
                 dogma_attributes.data_type,
                 dogma_units.unit_id,
                 dogma_units.name AS unit_name,
-                dogma_units.display_name AS unit_display_name
+                dogma_units.display_name AS unit_display_name,
+                COALESCE(
+                    referenced_group.name,
+                    referenced_type.name,
+                    referenced_attribute.display_name,
+                    referenced_attribute.name
+                ) AS reference_name
 
             FROM type_dogma_attributes
 
@@ -42,47 +48,27 @@ def get_type_dogma_attributes(
                 ON dogma_attributes.unit_id
                     = dogma_units.unit_id
 
+            LEFT JOIN groups AS referenced_group
+                ON dogma_units.name = 'groupID'
+                AND referenced_group.group_id
+                    = CAST(type_dogma_attributes.value AS INTEGER)
+
+            LEFT JOIN types AS referenced_type
+                ON dogma_units.name = 'typeID'
+                AND referenced_type.type_id
+                    = CAST(type_dogma_attributes.value AS INTEGER)
+
+            LEFT JOIN dogma_attributes AS referenced_attribute
+                ON dogma_units.name = 'attributeID'
+                AND referenced_attribute.attribute_id
+                    = CAST(type_dogma_attributes.value AS INTEGER)
+
             WHERE type_dogma_attributes.type_id = ?
 
             ORDER BY type_dogma_attributes.sort_index
         """, (type_id,)).fetchall()
 
-    result = [dict(row) for row in rows]
-
-    group_ids = {
-        int(row["value"])
-        for row in result
-        if row["name"].startswith("chargeGroup")
-        and row["value"] > 0
-    }
-
-    if group_ids:
-        placeholders = ",".join(
-            "?" for _ in group_ids
-        )
-
-        with connect() as db:
-            group_rows = db.execute(
-                f"""
-                SELECT group_id, name
-                FROM groups
-                WHERE group_id IN ({placeholders})
-                """,
-                tuple(sorted(group_ids)),
-            ).fetchall()
-
-        group_names = {
-            row["group_id"]: row["name"]
-            for row in group_rows
-        }
-
-        for row in result:
-            if row["name"].startswith("chargeGroup"):
-                row["reference_name"] = group_names.get(
-                    int(row["value"])
-                )
-
-    return result
+    return [dict(row) for row in rows]
 
 
 def get_type_dogma_effects(
@@ -275,100 +261,240 @@ def get_type_used_with(
     type_id: int,
 ) -> list[dict]:
     with connect() as db:
-        group_rows = db.execute("""
-            SELECT DISTINCT
-                CAST(type_dogma_attributes.value AS INTEGER)
-                    AS group_id
-
-            FROM type_dogma_attributes
-
-            JOIN dogma_attributes
-                ON type_dogma_attributes.attribute_id
-                    = dogma_attributes.attribute_id
-
-            WHERE type_dogma_attributes.type_id = ?
-              AND dogma_attributes.name LIKE 'chargeGroup%'
-              AND type_dogma_attributes.value > 0
-        """, (type_id,)).fetchall()
-
-        group_ids = [
-            row["group_id"]
-            for row in group_rows
-        ]
-
-        if not group_ids:
-            return []
-
-        size_row = db.execute("""
-            SELECT type_dogma_attributes.value
-
-            FROM type_dogma_attributes
-
-            JOIN dogma_attributes
-                ON type_dogma_attributes.attribute_id
-                    = dogma_attributes.attribute_id
-
-            WHERE type_dogma_attributes.type_id = ?
-              AND dogma_attributes.name = 'chargeSize'
-
-            LIMIT 1
+        selected = db.execute("""
+            SELECT group_id
+            FROM types
+            WHERE type_id = ?
         """, (type_id,)).fetchone()
 
-        charge_size = (
-            size_row["value"]
-            if size_row is not None
-            else None
+        if selected is None:
+            return []
+
+        (
+            charge_group_attribute_ids,
+            charge_size_attribute_id,
+        ) = _charge_relation_attribute_ids(db)
+
+        relation_attribute_ids = list(
+            charge_group_attribute_ids
         )
 
-        group_placeholders = ",".join(
-            "?" for _ in group_ids
+        if charge_size_attribute_id is not None:
+            relation_attribute_ids.append(
+                charge_size_attribute_id
+            )
+
+        relation_rows = []
+
+        if relation_attribute_ids:
+            placeholders = ",".join(
+                "?" for _ in relation_attribute_ids
+            )
+            relation_rows = db.execute(
+                f"""
+                SELECT attribute_id, value
+                FROM type_dogma_attributes
+                WHERE type_id = ?
+                  AND attribute_id IN ({placeholders})
+                """,
+                (type_id, *relation_attribute_ids),
+            ).fetchall()
+
+        charge_group_attribute_ids = set(
+            charge_group_attribute_ids
+        )
+        charge_group_ids = sorted({
+            int(row["value"])
+            for row in relation_rows
+            if row["attribute_id"]
+            in charge_group_attribute_ids
+            and row["value"] > 0
+        })
+        charge_size = next(
+            (
+                row["value"]
+                for row in relation_rows
+                if row["attribute_id"]
+                == charge_size_attribute_id
+            ),
+            None,
         )
 
-        parameters = list(group_ids)
-        size_filter = ""
-
-        if charge_size is not None:
-            size_filter = """
-                AND EXISTS (
-                    SELECT 1
-                    FROM type_dogma_attributes AS candidate_size
-                    JOIN dogma_attributes AS size_attribute
-                        ON candidate_size.attribute_id
-                            = size_attribute.attribute_id
-                    WHERE candidate_size.type_id = types.type_id
-                      AND size_attribute.name = 'chargeSize'
-                      AND candidate_size.value = ?
-                )
-            """
-            parameters.append(charge_size)
-
-        rows = db.execute(
-            f"""
-            SELECT
-                types.type_id,
-                types.name,
-                types.meta_group_id,
-                groups.group_id,
-                groups.name AS group_name
-
-            FROM types
-
-            JOIN groups
-                ON types.group_id = groups.group_id
-
-            WHERE types.published = 1
-              AND types.group_id IN ({group_placeholders})
-              {size_filter}
-
-            ORDER BY
-                COALESCE(types.meta_group_id, 1),
-                types.name
-            """,
-            tuple(parameters),
-        ).fetchall()
+        if charge_group_ids:
+            rows = _compatible_charges(
+                db,
+                charge_group_ids,
+                charge_size,
+                charge_size_attribute_id,
+            )
+        else:
+            rows = _compatible_launchers(
+                db,
+                selected["group_id"],
+                charge_size,
+                charge_group_attribute_ids,
+                charge_size_attribute_id,
+            )
 
     return [dict(row) for row in rows]
 
+
+def _charge_relation_attribute_ids(db):
+    rows = db.execute("""
+        SELECT attribute_id, name
+        FROM dogma_attributes
+        WHERE name LIKE 'chargeGroup%'
+           OR name = 'chargeSize'
+    """).fetchall()
+
+    charge_group_attribute_ids = tuple(
+        row["attribute_id"]
+        for row in rows
+        if row["name"].startswith("chargeGroup")
+    )
+    charge_size_attribute_id = next(
+        (
+            row["attribute_id"]
+            for row in rows
+            if row["name"] == "chargeSize"
+        ),
+        None,
+    )
+
+    return (
+        charge_group_attribute_ids,
+        charge_size_attribute_id,
+    )
+
+
+def _compatible_charges(
+    db,
+    group_ids: list[int],
+    charge_size,
+    charge_size_attribute_id,
+):
+    group_placeholders = ",".join(
+        "?" for _ in group_ids
+    )
+    parameters = list(group_ids)
+    size_join = ""
+
+    if (
+        charge_size is not None
+        and charge_size_attribute_id is not None
+    ):
+        size_join = """
+            JOIN type_dogma_attributes AS candidate_size
+                ON candidate_size.type_id = types.type_id
+               AND candidate_size.attribute_id = ?
+               AND candidate_size.value = ?
+        """
+        parameters = [
+            charge_size_attribute_id,
+            charge_size,
+            *group_ids,
+        ]
+
+    return db.execute(
+        f"""
+        SELECT
+            types.type_id,
+            types.name,
+            types.meta_group_id,
+            groups.group_id,
+            groups.name AS group_name
+
+        FROM types
+
+        JOIN groups
+            ON types.group_id = groups.group_id
+
+        {size_join}
+
+        WHERE types.published = 1
+          AND types.group_id IN ({group_placeholders})
+
+        ORDER BY
+            COALESCE(types.meta_group_id, 1),
+            types.name
+        """,
+        tuple(parameters),
+    ).fetchall()
+
+
+def _compatible_launchers(
+    db,
+    charge_group_id: int,
+    charge_size,
+    charge_group_attribute_ids,
+    charge_size_attribute_id,
+):
+    if not charge_group_attribute_ids:
+        return []
+
+    attribute_placeholders = ",".join(
+        "?" for _ in charge_group_attribute_ids
+    )
+    parameters = [
+        *charge_group_attribute_ids,
+        charge_group_id,
+    ]
+    size_join = ""
+    size_filter = ""
+
+    if (
+        charge_size is not None
+        and charge_size_attribute_id is not None
+    ):
+        size_join = """
+            LEFT JOIN type_dogma_attributes AS candidate_size
+                ON candidate_size.type_id = types.type_id
+               AND candidate_size.attribute_id = ?
+        """
+        size_filter = """
+            AND (
+                candidate_size.value IS NULL
+                OR candidate_size.value = ?
+            )
+        """
+        parameters = [
+            charge_size_attribute_id,
+            *charge_group_attribute_ids,
+            charge_group_id,
+            charge_size,
+        ]
+
+    return db.execute(
+        f"""
+        SELECT DISTINCT
+            types.type_id,
+            types.name,
+            types.meta_group_id,
+            groups.group_id,
+            groups.name AS group_name
+
+        FROM type_dogma_attributes AS accepted_charge
+
+        JOIN types
+            ON accepted_charge.type_id = types.type_id
+
+        JOIN groups
+            ON types.group_id = groups.group_id
+
+        {size_join}
+
+        WHERE types.published = 1
+          AND accepted_charge.attribute_id
+              IN ({attribute_placeholders})
+          AND accepted_charge.value = ?
+          {size_filter}
+
+        ORDER BY
+            COALESCE(types.meta_group_id, 1),
+            types.name
+        """,
+        tuple(parameters),
+    ).fetchall()
 
 def get_type_materials(
     type_id: int,

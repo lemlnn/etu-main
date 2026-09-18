@@ -43,7 +43,7 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 ### Inventory
 
 - search inventory types by ID or name
-- fuzzy name matching for misspelled item names
+- deterministic keyword matching for item names, with live GUI results and match counts
 - view type, group, category, volume, publication state, and descriptions
 - identify Tech II, Tech III, faction, deadspace, officer, storyline, abyssal, limited-time, premium, and structure meta groups using EVE's native item tags
 - inspect published dogma attributes with readable values and EVE icons
@@ -57,13 +57,14 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 ### Universe
 
 - search solar systems by ID or name
-- fuzzy and prefix-aware system search, including J-space names
+- deterministic keyword and prefix-friendly system search, including J-space names
 - view security status, constellation, and region information
 - view static stargate connections
 - search regions by ID or name
 
 ### Market
 
+- inline keyword suggestions for item and system/region searches
 - retrieve paginated regional market orders through ESI
 - view market orders by region or filter them to a selected system
 - sort sell orders from lowest to highest price
@@ -76,6 +77,7 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 
 ### Navigation
 
+- inline keyword suggestions for origin and destination systems
 - plan routes through the static stargate network
 - shortest-route planning
 - safer routing
@@ -85,7 +87,7 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 - avoided systems
 - route security summaries
 - region transition markers
-- fuzzy system lookup for origins, destinations, waypoints, and avoided systems
+- keyword system lookup for origins, destinations, waypoints, and avoided systems
 
 Navigation uses the static stargate network from the SDE. Dynamic wormhole connections are not included.
 
@@ -103,7 +105,6 @@ Navigation uses the static stargate network from the SDE. Dynamic wormhole conne
 
 - Python 3.11 or newer
 - `requests`
-- `rapidfuzz`
 - `PySide6`
 
 The Python dependencies are installed automatically through `pyproject.toml`.
@@ -187,7 +188,6 @@ etu-main/
 │       │   ├── market.py           # market ui and formatting
 │       │   ├── navigation.py       # route planning ui
 │       │   ├── regions.py          # region search and selection ui
-│       │   ├── search.py           # shared search ranking helpers
 │       │   ├── systems.py          # solar-system search and selection ui
 │       │   └── universe.py         # universe submenu
 │       │
@@ -197,7 +197,7 @@ etu-main/
 │       │   ├── app.py              # creates and configures qapplication
 │       │   ├── dogma.py            # dogma formatting and icon presentation
 │       │   ├── meta.py             # meta-group tags and list delegate
-│       │   ├── search.py           # takes fuzzy search from the cli functions
+│       │   ├── search.py           # keyword lookup and live suggestion helpers
 │       │   ├── theme.py            # gui palette, spacing, etc
 │       │   ├── widgets.py          # contains the responsive parts of the application
 │       │   ├── window.py           # main desktop shell
@@ -217,7 +217,7 @@ etu-main/
 │       │   ├── __init__.py         # public sde interface
 │       │   ├── database.py         # sqlite paths, schema, and metadata
 │       │   ├── importer.py         # jsonl import logic
-│       │   ├── inventory.py        # inventory queries and fuzzy search
+│       │   ├── inventory.py        # inventory queries and keyword search
 │       │   ├── universe.py         # universe queries, stargates, and routing
 │       │   └── updater.py          # sde download and update logic
 │       │

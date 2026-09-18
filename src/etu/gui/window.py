@@ -117,11 +117,18 @@ class MainWindow(QMainWindow):
         layout.addWidget(brand)
         layout.addSpacing(UNIT)
 
+        inventory_page = InventoryPage()
+        settings_page = SettingsPage()
+
+        settings_page.inventory_settings_changed.connect(
+            inventory_page.refresh_search_preferences
+        )
+
         self._add_page(
             layout,
             "I",
             "Inventory",
-            InventoryPage(),
+            inventory_page,
         )
         self._add_page(
             layout,
@@ -148,7 +155,7 @@ class MainWindow(QMainWindow):
             layout,
             "S",
             "Settings",
-            SettingsPage(),
+            settings_page,
         )
 
         return rail
