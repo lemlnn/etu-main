@@ -26,3 +26,6 @@ where = ["src"]
     "assets/dogma/*.png",
     "assets/meta/*.png",
 ]
+
+[tool.setuptools.data-files]
+"share/etu" = ["Jura.zip"]
