@@ -8,6 +8,7 @@ from etu.cli.inventory import inventory_menu
 from etu.cli.market import market_menu
 from etu.cli.universe import universe_menu
 from etu.cli.navigation import navigation_menu
+from etu.version import get_development_version
 
 
 def launch_gui():
@@ -27,7 +28,7 @@ def launch_gui():
 def main():
     while True:
         print()
-        print("ETU dev-0.1.7")
+        print(f"ETU {get_development_version()}")
         print()
         print("[1] Inventory")
         print("[2] Universe")

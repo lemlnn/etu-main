@@ -1,10 +1,14 @@
 """caldari-inspired photon theme tokens and qt styling"""
 
+from functools import cache
 from pathlib import Path
 import zipfile
+from sysconfig import get_path
 
 from PySide6.QtCore import QByteArray
 from PySide6.QtGui import QFont, QFontDatabase
+
+from etu.paths import get_editable_project_root
 
 
 UNIT = 8
@@ -39,11 +43,37 @@ COLORS = {
 }
 
 
-def _load_bundled_jura() -> str | None:
-    project_root = Path(__file__).resolve().parents[3]
-    font_zip = project_root / "Jura.zip"
+def _jura_archive_path() -> Path | None:
+    installed_data = get_path("data")
 
-    if not font_zip.exists():
+    if installed_data:
+        candidate = (
+            Path(installed_data)
+            / "share"
+            / "etu"
+            / "Jura.zip"
+        )
+
+        if candidate.is_file():
+            return candidate
+
+    editable_root = get_editable_project_root()
+
+    if editable_root is not None:
+        candidate = editable_root / "Jura.zip"
+
+        if candidate.is_file():
+            return candidate
+
+    candidate = Path.cwd() / "Jura.zip"
+    return candidate if candidate.is_file() else None
+
+
+@cache
+def _load_bundled_jura() -> str | None:
+    font_zip = _jura_archive_path()
+
+    if font_zip is None:
         return None
 
     try:

@@ -1679,7 +1679,7 @@ class MarketPage(BasePage):
                 return
 
             self.status.set_status(
-                f"Market request failed · {exception}",
+                f"Market request failed     {exception}",
                 "error",
             )
 

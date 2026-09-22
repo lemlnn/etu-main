@@ -61,12 +61,14 @@ Some advanced navigation controls, including ordered waypoints and avoided syste
 
 ### Universe
 
-- search solar systems by ID or name
-- deterministic keyword and substring-friendly system search, including J-space names
-- reuse in-memory trie indexes for fast system and region lookups
-- view security status, constellation, and region information
-- view static stargate connections
-- search regions by ID or name
+- search solar systems, constellations, and regions by ID or name from one live browser
+- filter Universe results by object type and security-space classification
+- reuse in-memory trie indexes for deterministic keyword and substring-friendly lookups, including J-space names
+- inspect structured system, constellation, and region overviews without repeated graph scans
+- browse static system connections, constellation membership, region systems, and cross-border stargate links
+- jump between related Universe objects directly from detail views
+- send an inspected solar system to Navigation as the route origin or destination
+- cache static Universe detail aggregates and invalidate them when the local SDE changes
 
 ### Market
 
@@ -245,8 +247,10 @@ etu-main/
 │       ├── esi.py                  # public esi request and pagination helpers
 │       ├── inventory.py            # inventory service layer
 │       ├── market.py               # market data and market-range logic
+│       ├── paths.py                # installation-safe runtime/resource paths
 │       ├── search.py               # shared keyword matching helpers
-│       └── universe.py             # universe and navigation service layer
+│       ├── universe.py             # universe and navigation service layer
+│       └── version.py              # shared package-version helpers
 │
 ├── .gitignore
 ├── LICENSE
@@ -256,19 +260,21 @@ etu-main/
 
 ## Runtime Data
 
-ETU creates local runtime data outside the tracked source tree:
+ETU stores writable runtime data in the platform's per-user data directory rather than inside the source checkout:
 
-```text
-etu-main/
-└── data/
-    └── etu.db
-```
+- Linux: `$XDG_DATA_HOME/etu/etu.db`, or `~/.local/share/etu/etu.db` when `XDG_DATA_HOME` is unset
+- macOS: `~/Library/Application Support/ETU/etu.db`
+- Windows: `%LOCALAPPDATA%\ETU\etu.db`
 
-`etu.db` is the generated SQLite database containing the imported static data and ETU metadata.
+Set `ETU_DATA_DIR` to override the runtime data directory. Editable installs also recognize the former project-local `data/etu.db` location and migrate a usable legacy database into the per-user location when needed.
 
-SDE archives and extracted JSONL files are handled in temporary directories during updates rather than being kept permanently in the repository.
+`etu.db` is the generated SQLite database containing the imported static data and ETU metadata. SDE archives and extracted JSONL files are handled in temporary directories during updates rather than being kept permanently in the repository.
 
 ETU also tracks its own SDE schema version. After an ETU update adds new static-data requirements, Settings may report `REFRESH REQUIRED` even when the installed CCP SDE build is already current. Refreshing the SDE rebuilds the local database with the additional data.
+
+## Versioning
+
+ETU's development version is declared once in `pyproject.toml` under `[project].version`. The CLI banner, GUI, and ESI `User-Agent` derive their version from the shared package-version helper instead of maintaining separate hardcoded values. Editable installs read the active project's `pyproject.toml`, while normal installs use installed package metadata.
 
 ## Architecture
 

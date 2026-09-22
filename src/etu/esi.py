@@ -2,11 +2,14 @@
 
 import requests
 
+from etu.version import get_development_version
+
+
 BASE_URL = "https://esi.evetech.net"
 
 HEADERS = {
     "X-Compatibility-Date": "2026-09-10",
-    "User-Agent": "ETU/dev-0.1.7"
+    "User-Agent": f"ETU/{get_development_version()}"
 }
 
 def get(path: str, params: dict | None = None) -> dict | list:

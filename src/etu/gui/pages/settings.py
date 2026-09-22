@@ -101,7 +101,7 @@ class SettingsPage(BasePage):
         preferences = inventory_search_preferences()
 
         self.show_all_results = QCheckBox(
-            "SHOW ALL SEARCH RESULTS"
+            "SHOW ALL SEARCH RESULTS (not recommended due to high amounts of entries likely to be listed)"
         )
         self.show_all_results.setObjectName(
             "SettingsToggle"
@@ -293,7 +293,7 @@ class SettingsPage(BasePage):
                     "CHECK FOR SDE UPDATE"
                 )
                 self.update_status.set_status(
-                    f"SDE is up to date · build {latest_build}",
+                    f"SDE is up to date     build {latest_build}",
                     "success",
                 )
                 return
@@ -308,7 +308,7 @@ class SettingsPage(BasePage):
                     "REFRESH SDE"
                 )
                 self.update_status.set_status(
-                    "Local SDE refresh required · "
+                    "Local SDE refresh required     "
                     f"build {latest_build}",
                     "warning",
                 )
@@ -317,14 +317,14 @@ class SettingsPage(BasePage):
                 "UPDATE SDE"
             )
             self.update_status.set_status(
-                f"Update available · "
+                f"Update available     "
                 f"{installed or 'none'} → {latest_build}",
                 "warning",
             )
 
         def error(exception):
             self.update_status.set_status(
-                f"SDE update check failed · {exception}",
+                f"SDE update check failed     {exception}",
                 "error",
             )
 
@@ -352,13 +352,13 @@ class SettingsPage(BasePage):
             )
             self.refresh_status()
             self.update_status.set_status(
-                f"SDE updated · build {sde.get_sde_build()}",
+                f"SDE updated     build {sde.get_sde_build()}",
                 "success",
             )
 
         def error(exception):
             self.update_status.set_status(
-                f"SDE update failed · {exception}",
+                f"SDE update failed     {exception}",
                 "error",
             )
 

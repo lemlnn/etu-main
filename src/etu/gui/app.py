@@ -30,8 +30,8 @@ def main():
     window = MainWindow()
     window.show()
 
-    # Build the common published-item/system/region tries after the window is
-    # visible so the first live search does not pay the one-time index cost.
+    # Build the common published-item and unified universe tries after the
+    # window is visible so the first live search does not pay the index cost.
     Thread(
         target=sde.warm_search_indexes,
         name="etu-search-index-warmup",

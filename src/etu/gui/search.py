@@ -7,6 +7,8 @@ from PySide6.QtCore import (
     QTimer,
     Qt,
 )
+from etu import sde
+
 from PySide6.QtWidgets import (
     QComboBox,
     QCompleter,
@@ -19,8 +21,11 @@ from etu.inventory import (
     get_filterable_type_categories,
 )
 from etu.universe import (
+    find_constellation_keywords,
     find_region_keywords,
     find_system_keywords,
+    find_universe_keywords,
+    get_constellation,
     get_region,
     get_system,
 )
@@ -75,6 +80,100 @@ def search_types(
         limit=limit,
         published_only=published_only,
         category_id=category_id,
+    )
+
+
+def _universe_exact_result(kind, object_id):
+    if kind == "system":
+        data = sde.get_system(object_id)
+        id_key = "system_id"
+
+    elif kind == "constellation":
+        data = sde.get_constellation(object_id)
+        id_key = "constellation_id"
+
+    elif kind == "region":
+        data = sde.get_region_summary(object_id)
+        id_key = "region_id"
+
+    else:
+        return None
+
+    if data is None:
+        return None
+
+    result = dict(data)
+    result["kind"] = kind
+    result["object_id"] = result[id_key]
+    result["match_count"] = 1
+    return result
+
+def _exact_result_matches_space(result, space):
+    if not space:
+        return True
+
+    if result["kind"] == "system":
+        return result.get("space_kind") == space
+
+    return int(result.get(f"{space}_count", 0) or 0) > 0
+
+def search_universe(
+    query,
+    limit=50,
+    *,
+    kind=None,
+    space=None,
+):
+    query = query.strip()
+
+    if not query:
+        return []
+
+    if query.isdigit():
+        object_id = int(query)
+        kinds = (kind,) if kind else (
+            "system",
+            "constellation",
+            "region",
+        )
+
+        for candidate_kind in kinds:
+            result = _universe_exact_result(
+                candidate_kind,
+                object_id,
+            )
+
+            if (
+                result is not None
+                and _exact_result_matches_space(result, space)
+            ):
+                return [result]
+
+        return []
+
+    return find_universe_keywords(
+        query,
+        limit=limit,
+        kind=kind,
+        space=space,
+    )
+
+def search_constellations(query, limit=25):
+    query = query.strip()
+
+    if not query:
+        return []
+
+    if query.isdigit():
+        result = _universe_exact_result(
+            "constellation",
+            int(query),
+        )
+        return [result] if result else []
+
+    return find_constellation_keywords(
+        query,
+        limit=limit,
     )
 
 def search_systems(query, limit=25):
@@ -138,6 +237,10 @@ def resolve_type(
 
 def resolve_system(query):
     matches = search_systems(query, limit=1)
+    return matches[0] if matches else None
+
+def resolve_constellation(query):
+    matches = search_constellations(query, limit=1)
     return matches[0] if matches else None
 
 def resolve_region(query):
@@ -207,9 +310,14 @@ class TypeCategoryFilter(QComboBox):
             None,
         )
 
-        for category in get_filterable_type_categories(
-            published_only=published_only,
-        ):
+        if sde.is_ready():
+            categories = get_filterable_type_categories(
+                published_only=published_only,
+            )
+        else:
+            categories = []
+
+        for category in categories:
             self.addItem(
                 str(category["name"]).upper(),
                 int(category["category_id"]),

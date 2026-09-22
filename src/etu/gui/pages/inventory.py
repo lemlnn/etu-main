@@ -587,6 +587,7 @@ class InventoryPage(BasePage):
         previous,
     ):
         if current is None:
+            self._clear_details()
             return
 
         type_id = current.data(
@@ -637,6 +638,27 @@ class InventoryPage(BasePage):
             ),
         }
         self._set_detail_tabs(availability)
+
+    def _clear_details(self):
+        for row in self.detail_rows.values():
+            row.set_value("-")
+
+        self.description.clear()
+
+        for tree in (
+            self.attributes_view,
+            self.fitting_view,
+            self.requirements_view,
+            self.used_with_view,
+            self.variations_view,
+            self.industry_view,
+        ):
+            tree.clear()
+
+        self._set_detail_tabs({})
+        self.tabs.setCurrentWidget(
+            self.description_tab
+        )
 
     def _show_refresh_required(self):
         message = (

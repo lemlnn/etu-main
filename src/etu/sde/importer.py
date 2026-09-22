@@ -89,6 +89,17 @@ def import_sde(
 
         _set_sde_schema_version(db)
 
+    # SDE-backed indexes, route graphs, and composed Universe details are
+    # immutable only until this replacement completes.  Clear them after the
+    # transaction commits so the next read sees the new dataset.
+    from etu.sde.inventory import clear_inventory_search_cache
+    from etu.sde.universe import clear_universe_cache
+    from etu.universe import clear_universe_detail_cache
+
+    clear_inventory_search_cache()
+    clear_universe_cache()
+    clear_universe_detail_cache()
+
     print("SDE import complete.")
 
 

@@ -238,6 +238,14 @@ class NavigationPage(BasePage):
                 "error",
             )
 
+    def set_origin_system(self, system_name):
+        self.origin.setText(str(system_name))
+        self.origin.setFocus()
+
+    def set_destination_system(self, system_name):
+        self.destination.setText(str(system_name))
+        self.destination.setFocus()
+
     def plan_route(self):
         origin_query = self.origin.text().strip()
         destination_query = self.destination.text().strip()

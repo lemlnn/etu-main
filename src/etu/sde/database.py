@@ -1,16 +1,83 @@
 """sqlite setup and metadata helpers for etu's local sde copy. the schema stays in one place for the importer to build on"""
 
+import os
 import sqlite3
-from pathlib import Path
+
+from etu.paths import get_data_dir, get_legacy_data_dir
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = get_data_dir()
 SDE_DIR = DATA_DIR / "sde"
 DB_PATH = DATA_DIR / "etu.db"
 
 SDE_SCHEMA_VERSION = 3
+_LEGACY_MIGRATION_CHECKED = False
+
+
+def _database_has_sde_data(path) -> bool:
+    """Return whether a database contains the core imported SDE datasets."""
+    if not path.is_file():
+        return False
+
+    try:
+        uri = f"{path.resolve().as_uri()}?mode=ro"
+
+        with sqlite3.connect(uri, uri=True) as db:
+            types = db.execute(
+                "SELECT COUNT(*) FROM types"
+            ).fetchone()
+            systems = db.execute(
+                "SELECT COUNT(*) FROM systems"
+            ).fetchone()
+
+        return bool(types[0] > 0 and systems[0] > 0)
+
+    except (OSError, sqlite3.DatabaseError):
+        return False
+
+
+def _migrate_legacy_database() -> bool:
+    """Copy a populated pre-0.1.8 source-tree database into user data once."""
+    global _LEGACY_MIGRATION_CHECKED
+
+    if _LEGACY_MIGRATION_CHECKED:
+        return False
+
+    if _database_has_sde_data(DB_PATH):
+        _LEGACY_MIGRATION_CHECKED = True
+        return False
+
+    legacy_data = get_legacy_data_dir()
+
+    if legacy_data is None:
+        _LEGACY_MIGRATION_CHECKED = True
+        return False
+
+    legacy_db = legacy_data / "etu.db"
+
+    if not _database_has_sde_data(legacy_db):
+        _LEGACY_MIGRATION_CHECKED = True
+        return False
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    migration_path = DATA_DIR / "etu.db.migrating"
+    migration_path.unlink(missing_ok=True)
+
+    source_uri = f"{legacy_db.resolve().as_uri()}?mode=ro"
+
+    try:
+        with sqlite3.connect(source_uri, uri=True) as source:
+            with sqlite3.connect(migration_path) as destination:
+                source.backup(destination)
+
+        os.replace(migration_path, DB_PATH)
+        _LEGACY_MIGRATION_CHECKED = True
+
+    finally:
+        migration_path.unlink(missing_ok=True)
+
+    return True
 
 
 def connect() -> sqlite3.Connection:
@@ -48,6 +115,8 @@ def create_database():
     """
     create etu's static-data tables if they do not already exist
     """
+
+    _migrate_legacy_database()
 
     with connect() as db:
         db.execute("""
@@ -307,6 +376,31 @@ def create_database():
             ON systems(name)
         """)
 
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_constellations_region
+            ON constellations(region_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_systems_constellation
+            ON systems(constellation_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_systems_region
+            ON systems(region_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_stargates_system
+            ON stargates(system_id)
+        """)
+
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_stargates_destination_system
+            ON stargates(destination_system_id)
+        """)
+
         # the installed sde build is stored here so the updater knows whether it actually needs to download anything
         db.execute("""
             CREATE TABLE IF NOT EXISTS metadata (
@@ -383,9 +477,6 @@ def is_ready() -> bool:
     return true if the local sde database exists and contains
     inventory types and solar systems
     """
-
-    if not DB_PATH.exists():
-        return False
 
     try:
         create_database()

@@ -1,10 +1,5 @@
 """main photon-inspired desktop shell"""
 
-from importlib.metadata import (
-    PackageNotFoundError,
-    version,
-)
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -30,13 +25,7 @@ from etu.gui.pages.settings import SettingsPage
 from etu.gui.pages.universe import UniversePage
 from etu.gui.theme import COLORS, UNIT
 from etu.gui.widgets import GridBackdrop
-
-
-def get_version():
-    try:
-        return version("etu")
-    except PackageNotFoundError:
-        return "dev"
+from etu.version import get_development_version
 
 
 class MainWindow(QMainWindow):
@@ -116,10 +105,21 @@ class MainWindow(QMainWindow):
         layout.addSpacing(UNIT)
 
         inventory_page = InventoryPage()
+        universe_page = UniversePage()
+        market_page = MarketPage()
+        navigation_page = NavigationPage()
         settings_page = SettingsPage()
 
         settings_page.inventory_settings_changed.connect(
             inventory_page.refresh_search_preferences
+        )
+
+        self.navigation_page = navigation_page
+        universe_page.navigation_origin_requested.connect(
+            self._set_navigation_origin
+        )
+        universe_page.navigation_destination_requested.connect(
+            self._set_navigation_destination
         )
 
         self._add_page(
@@ -132,19 +132,19 @@ class MainWindow(QMainWindow):
             layout,
             "U",
             "Universe",
-            UniversePage(),
+            universe_page,
         )
         self._add_page(
             layout,
             "M",
             "Market",
-            MarketPage(),
+            market_page,
         )
         self._add_page(
             layout,
             "N",
             "Navigation",
-            NavigationPage(),
+            navigation_page,
         )
 
         layout.addStretch()
@@ -240,7 +240,7 @@ class MainWindow(QMainWindow):
         )
 
         left = QLabel(
-            f"ETU dev-{get_version()}"
+            f"ETU {get_development_version()}"
         )
         left.setObjectName("StatusText")
 
@@ -282,6 +282,27 @@ class MainWindow(QMainWindow):
         self.page_titles.append(name)
 
         layout.addWidget(button)
+
+    def _open_navigation(self):
+        index = self.pages.indexOf(self.navigation_page)
+
+        if index < 0:
+            return
+
+        button = self.nav_group.button(index)
+
+        if button is not None:
+            button.setChecked(True)
+
+        self.select_page(index)
+
+    def _set_navigation_origin(self, system_name):
+        self.navigation_page.set_origin_system(system_name)
+        self._open_navigation()
+
+    def _set_navigation_destination(self, system_name):
+        self.navigation_page.set_destination_system(system_name)
+        self._open_navigation()
 
     def select_page(self, index):
         self.pages.setCurrentIndex(index)
